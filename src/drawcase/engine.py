@@ -14,9 +14,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.request
 from typing import Callable, List, Optional
 
 from .version_info import appdata_dir
@@ -261,14 +264,29 @@ def scan_loras() -> List[dict]:
 
 REQUIRED_PKGS = [
     "diffusers>=0.34.0",
-    "transformers>=4.51.0",
+    "transformers>=4.51.0,<5",  # 5.x 与 diffusers 管线不兼容，锁 4.x
     "accelerate>=1.0.0",
     "safetensors>=0.4.0",
     "sentencepiece",
     "protobuf",
     "gguf",
-    "huggingface_hub>=0.26.0",
+    "huggingface_hub>=0.26.0,<1.0",  # transformers 4.x 要求 hub < 1
 ]
+
+
+def _dist_name(spec: str) -> str:
+    """从包声明（如 transformers>=4.51.0,<5）取发行包名."""
+    for sep in (">=", "<=", "==", "~=", "!=", ">", "<"):
+        if sep in spec:
+            return spec.split(sep)[0].strip()
+    return spec.strip()
+
+
+def _import_name(spec: str) -> str:
+    """发行包名 → 实际 import 名字（protobuf 的模块名是 google.protobuf）."""
+    name = _dist_name(spec).lower()
+    return {"protobuf": "google.protobuf"}.get(name, name)
+
 
 # 国内 PyPI 镜像表（自动依次尝试，直到成功）
 PIP_MIRRORS = [
@@ -344,21 +362,14 @@ def ensure_deps(
     if not st["libs"]:
         missing = []
         for pkg in REQUIRED_PKGS:
-            name = pkg.split(">=")[0].split("<")[0]
             try:
-                __import__(name)
+                __import__(_import_name(pkg))
             except Exception:
                 missing.append(pkg)
         say(f"正在安装依赖库: {', '.join(missing)} ...")
-        rc = 1
-        for i, idx in enumerate(PIP_MIRRORS):  # 镜像表自动切换
-            say(f"使用镜像源 ({i + 1}/{len(PIP_MIRRORS)}): {idx}")
-            rc = _pip(["-i", idx, *missing], progress=lambda f: prog("依赖库", f))
-            if rc == 0:
-                break
-            say("该源不可用，尝试下一个…")
+        rc = _install_with_mirrors(missing, lambda f: prog("依赖库", f), say) if missing else 0
         if rc != 0:
-            say("依赖安装失败，请检查网络或手动安装。")
+            say("依赖安装失败，请检查上方错误信息或手动安装。")
             return False
 
     if not has_torch():
@@ -368,10 +379,11 @@ def ensure_deps(
             rc = _pip(
                 ["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124"],
                 progress=lambda f: prog("PyTorch", f),
+                log=say,
             )
         else:
             say("未检测到 NVIDIA 显卡，安装 CPU 版 PyTorch（约 200MB）...")
-            rc = _pip(["torch", "torchvision"], progress=lambda f: prog("PyTorch", f))
+            rc = _install_with_mirrors(["torch", "torchvision"], lambda f: prog("PyTorch", f), say)
         if rc != 0:
             say("PyTorch 安装失败，请检查网络后重试。")
             return False
@@ -380,49 +392,144 @@ def ensure_deps(
     return True
 
 
-class _ProgressCapture:
-    """捕获 pip 输出并解析百分比（tqdm 进度条形如  42%|███ |）."""
+def _install_with_mirrors(
+    args: List[str],
+    progress: Optional[Callable[[float], None]],
+    log: Callable[[str], None],
+) -> int:
+    """按镜像表依次安装，全部失败则返回非零."""
+    rc = 1
+    for i, idx in enumerate(PIP_MIRRORS):
+        log(f"使用镜像源 ({i + 1}/{len(PIP_MIRRORS)}): {idx}")
+        rc = _pip(["-i", idx, *args], progress=progress, log=log)
+        if rc == 0:
+            # 新装到 runtime 目录后刷新导入缓存，避免 import 拿到旧的模块列表
+            import importlib
 
-    def __init__(self, cb: Callable[[float], None]) -> None:
+            importlib.invalidate_caches()
+            ensure_runtime_path()
+            return 0
+        log(f"  可达性探测: {_probe(idx)}")
+        log("该源不可用，尝试下一个…")
+    return rc
+
+
+def _probe(url: str) -> str:
+    """探测镜像可达性，返回简短结论（用于区分网络问题与 pip 自身问题）."""
+    try:
+        req = urllib.request.Request(url, method="GET", headers={"User-Agent": "DrawCase"})
+        with urllib.request.urlopen(req, timeout=8, context=ssl.create_default_context()) as r:
+            return f"HTTP {r.status}"
+    except urllib.error.HTTPError as e:
+        return f"HTTP {e.code}"
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+
+
+class _ProgressCapture:
+    """捕获 pip 输出：解析 tqdm 百分比，同时保留错误行用于失败诊断."""
+
+    _NOISE = ("collecting ", "downloading ", "using cached ", "looking in indexes",
+              "requirement already satisfied", "━", "|██", "获取中")
+
+    def __init__(self, cb: Optional[Callable[[float], None]] = None) -> None:
         self.cb = cb
         self.last = 0.0
+        self.lines: List[str] = []
 
     def write(self, s: str) -> int:
-        try:
-            for m in re.finditer(r"(\d{1,3})%", s):
-                v = int(m.group(1)) / 100.0
-                if v >= self.last:
-                    self.last = v
-                    self.cb(min(0.99, v))
-        except Exception:
-            pass
+        if self.cb:
+            try:
+                for m in re.finditer(r"(\d{1,3})%", s):
+                    v = int(m.group(1)) / 100.0
+                    if v >= self.last:
+                        self.last = v
+                        self.cb(min(0.99, v))
+            except Exception:
+                pass
+        for ln in s.replace("\r", "\n").split("\n"):
+            ln = ln.strip()
+            if ln:
+                self.lines.append(ln)
+                if len(self.lines) > 400:  # 只保留尾部，防止超长输出吃内存
+                    del self.lines[:200]
         return len(s)
+
+    def error_lines(self, limit: int = 12) -> List[str]:
+        """挑出最能说明失败原因的行."""
+        keys = ("error", "错误", "could not", "no matching", "ssl", "certificate",
+                "proxy", "timeout", "timed out", "connection", "failed", "无法",
+                "失败", "denied", "retrying")
+        picked = [ln for ln in self.lines if any(k in ln.lower() for k in keys)]
+        if not picked:
+            picked = [ln for ln in self.lines
+                      if not ln.lower().startswith(self._NOISE)]
+        return (picked or self.lines)[-limit:]
 
     def flush(self) -> None:
         pass
 
 
-def _pip(args: List[str], progress: Optional[Callable[[float], None]] = None) -> int:
+def _ensure_ca_bundle() -> None:
+    """确保 TLS 根证书可用：打包 exe 内 pip 自带的 certifi 数据未收集时会全部 HTTPS 失败."""
+    if os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("PIP_CERT"):
+        return
+    for mod in ("certifi", "pip._vendor.certifi"):
+        try:
+            m = __import__(mod, fromlist=["where"])
+            p = m.where()
+        except Exception:
+            continue
+        if p and os.path.isfile(p):
+            os.environ["REQUESTS_CA_BUNDLE"] = p
+            os.environ.setdefault("SSL_CERT_FILE", p)
+            return
+
+
+def _pip(
+    args: List[str],
+    progress: Optional[Callable[[float], None]] = None,
+    log: Optional[Callable[[str], None]] = None,
+) -> int:
     """在打包 exe 与开发模式下都可用的 pip 安装（--target 装到用户数据目录）."""
     target = runtime_dir()
-    full = ["install", "--no-input", "--progress-bar", "on", "--target", target, "--upgrade", *args]
+    _ensure_ca_bundle()
+    full = [
+        "install", "--no-input", "--disable-pip-version-check",
+        "--no-warn-script-location", "--timeout", "30", "--retries", "2",
+        "--progress-bar", "on", "--target", target, "--upgrade", *args,
+    ]
     try:
         from pip._internal.cli.main import main as pip_main  # type: ignore
-    except Exception:
-        return subprocess.call(
-            [sys.executable, "-m", "pip", *full],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    if progress is None:
-        return pip_main(full)
+    except Exception as e:
+        if getattr(sys, "frozen", False):
+            # 打包后 sys.executable 是本程序，绝不能再拿它跑 -m pip（会递归启动自己）
+            if log:
+                log(f"内置 pip 不可用：{e}")
+            return 1
+        return subprocess.call([sys.executable, "-m", "pip", *full])
+
     cap = _ProgressCapture(progress)
     old_out, old_err = sys.stdout, sys.stderr
     sys.stdout, sys.stderr = cap, cap  # type: ignore[assignment]
+    rc = 1
     try:
-        return pip_main(full)
+        r = pip_main(full)
+        rc = 0 if r is None else int(r)
+    except SystemExit as e:  # 部分 pip 版本以 SystemExit 退出
+        code = e.code
+        rc = 0 if code in (None, 0) else (code if isinstance(code, int) else 1)
+    except Exception as e:
+        cap.write(f"pip 运行异常: {type(e).__name__}: {e}\n")
+        rc = 1
     finally:
         sys.stdout, sys.stderr = old_out, old_err  # type: ignore[assignment]
+
+    if rc != 0 and log:
+        # 把 pip 的真实错误暴露到界面日志，否则只看到"该源不可用"无从排查
+        for ln in cap.error_lines():
+            log("  " + ln)
+    return rc
 
 
 def _has_nvidia_gpu() -> bool:
@@ -459,9 +566,8 @@ def deps_status() -> dict:
     """检查依赖状态：{"libs": bool, "torch": bool}."""
     libs = True
     for pkg in REQUIRED_PKGS:
-        name = pkg.split(">=")[0].split("<")[0]
         try:
-            __import__(name)
+            __import__(_import_name(pkg))
         except Exception:
             libs = False
             break

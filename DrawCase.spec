@@ -4,13 +4,21 @@
 import os
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
 _icon = os.path.join("assets", "icon.ico")
 _vinfo = os.path.join("assets", "version_info.txt")
 _win_only = sys.platform.startswith("win")
+
+# pip 除 .py 还有运行时数据（_vendor/certifi/cacert.pem 等）：
+# 只 collect_submodules 会漏掉这些文件，导致 exe 内所有 HTTPS 请求证书校验失败
+_pip_data = collect_data_files("pip")
+try:
+    _pip_data += collect_data_files("certifi")
+except Exception:
+    pass
 
 hidden = (
     collect_submodules("ttkbootstrap")
@@ -31,7 +39,7 @@ a = Analysis(
     datas=[
         ("src/drawcase", "drawcase"),
         ("data/tags.json", "data"),
-    ],
+    ] + _pip_data,
     hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],
