@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec：QwenImageStudio（onedir，轻量，GUI 基础依赖）."""
+"""PyInstaller spec：DrawCase（onedir，轻量，GUI 基础依赖）."""
 
 import os
 import sys
@@ -16,10 +16,10 @@ hidden = (
     collect_submodules("ttkbootstrap")
     + collect_submodules("pip")  # 打包 exe 内置 pip，供依赖自检 --target 安装
     + [
-        "qwen_image_studio.taglib",
-        "qwen_image_studio.engine",
-        "qwen_image_studio.ui",
-        "qwen_image_studio.version_info",
+        "drawcase.taglib",
+        "drawcase.engine",
+        "drawcase.ui",
+        "drawcase.version_info",
     ]
 )
 
@@ -28,7 +28,7 @@ a = Analysis(
     pathex=["src"],
     binaries=[],
     datas=[
-        ("src/qwen_image_studio", "qwen_image_studio"),
+        ("src/drawcase", "drawcase"),
         ("data/tags.json", "data"),
     ],
     hiddenimports=hidden,
@@ -45,7 +45,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="QwenImageStudio",
+    name="DrawCase",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -61,5 +61,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="QwenImageStudio",
+    name="DrawCase",
 )

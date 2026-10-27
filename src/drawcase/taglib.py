@@ -320,7 +320,7 @@ def _packaged_tags() -> Optional[Tuple[int, List[Tuple[str, str, str]]]]:
     candidates = []
     if getattr(sys, "frozen", False):
         candidates.append(os.path.join(getattr(sys, "_MEIPASS", ""), "data", "tags.json"))
-    # 开发模式：taglib.py 位于 src/qwen_image_studio/，仓库根在三级上层
+    # 开发模式：taglib.py 位于 src/drawcase/，仓库根在三级上层
     candidates.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__)))), "data", "tags.json"))
     for p in candidates:

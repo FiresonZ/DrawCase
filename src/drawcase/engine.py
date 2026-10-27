@@ -482,7 +482,7 @@ def update_tags_from_github(log: Callable[[str], None]) -> bool:
         url = (prefix + "/" + raw) if prefix else raw
         try:
             log(f"尝试下载 Tag 库: {url}")
-            req = urllib.request.Request(url, headers={"User-Agent": "QwenImageStudio"})
+            req = urllib.request.Request(url, headers={"User-Agent": "DrawCase"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = _json.loads(resp.read().decode("utf-8"))
             version = int(data.get("version", 0))

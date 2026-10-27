@@ -1,4 +1,4 @@
-# QwenImageStudio 版本资源（PyInstaller VSVersionInfo 格式）
+# DrawCase 版本资源（PyInstaller VSVersionInfo 格式）
 # CI 会按 workflow 输入的版本号替换 filevers/prodvers 与 FileVersion/ProductVersion 字符串
 
 VSVersionInfo(
@@ -21,10 +21,10 @@ VSVersionInfo(
             StringStruct("CompanyName", "FiresonZ"),
             StringStruct("FileDescription", "DrawCase - 本地 AI 生图工作台（Qwen-Image / SDXL）"),
             StringStruct("FileVersion", "0.1.0"),
-            StringStruct("InternalName", "QwenImageStudio"),
+            StringStruct("InternalName", "DrawCase"),
             StringStruct("LegalCopyright", "Copyright (C) 2026 FiresonZ <dev@gith.uk>"),
-            StringStruct("OriginalFilename", "QwenImageStudio.exe"),
-            StringStruct("ProductName", "QwenImageStudio"),
+            StringStruct("OriginalFilename", "DrawCase.exe"),
+            StringStruct("ProductName", "DrawCase"),
             StringStruct("ProductVersion", "0.1.0"),
           ],
         )
