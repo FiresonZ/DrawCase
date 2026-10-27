@@ -31,9 +31,9 @@ UsePreviousAppDir=yes
 DirExistsWarning=no
 AppendDefaultDirName=yes
 AllowNoIcons=yes
-OutputDir=dist\installer
+OutputDir=..\dist\installer
 OutputBaseFilename=DrawCase-Setup-{#MyAppVersion}
-SetupIconFile=assets\icon.ico
+SetupIconFile=..\assets\icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -46,7 +46,7 @@ UninstallFilesDir={app}\uninst
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Files]
-Source: "dist\DrawCase\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs replacesameversion
+Source: "..\dist\DrawCase\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs replacesameversion
 
 [Dirs]
 ; 内置模型文件夹：用户手动放入下载好的模型；升级覆盖与卸载都不删除
