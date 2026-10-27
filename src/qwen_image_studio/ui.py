@@ -114,6 +114,7 @@ class App(tk.Tk):
         self.cmb_model = ttk.Combobox(row, state="readonly", width=48)
         self.cmb_model.pack(side=LEFT)
         ttk.Button(row, text="刷新", width=5, command=self._refresh_model_combo).pack(side=LEFT, padx=(6, 0))
+        ttk.Button(row, text="打开文件夹", command=self._open_model_root).pack(side=LEFT, padx=(6, 0))
         self.btn_load = ttk.Button(row, text="加载模型", style="Accent.TButton", command=self._on_load_model)
         self.btn_load.pack(side=LEFT, padx=(12, 0))
         self.lbl_model_state = ttk.Label(row, text="未加载", style="Sub.TLabel")
@@ -211,10 +212,12 @@ class App(tk.Tk):
         srow = ttk.Frame(tag_card, style="Panel.TFrame")
         srow.pack(fill=X)
         self.var_tagsearch = tk.StringVar()
-        ent = ttk.Entry(srow, textvariable=self.var_tagsearch, width=30)
+        ent = ttk.Entry(srow, textvariable=self.var_tagsearch, width=24)
         ent.pack(side=LEFT, fill=X, expand=True)
         ent.bind("<KeyRelease>", lambda e: self._refresh_tags())
-        ttk.Button(srow, text="搜索", width=6, command=self._refresh_tags).pack(side=LEFT, padx=(6, 0))
+        ttk.Button(srow, text="搜索", width=5, command=self._refresh_tags).pack(side=LEFT, padx=(6, 0))
+        self.btn_tagupd = ttk.Button(srow, text="更新 Tag 库", command=self._on_update_tags)
+        self.btn_tagupd.pack(side=LEFT, padx=(6, 0))
 
         # 分类过滤
         crow = ttk.Frame(tag_card, style="Panel.TFrame")
@@ -336,6 +339,11 @@ class App(tk.Tk):
                     self.deps_bar.configure(value=float(frac) * 100)
                 elif kind == "deps_status":
                     self._update_deps_status(dict(val))
+                elif kind == "tags_updated":
+                    self._refresh_tags()
+                    self.cmb_cat["values"] = ["全部"] + taglib.categories()
+                    self.btn_tagupd.configure(state="normal")
+                    self._log("Tag 库列表已刷新")
                 elif kind == "model_loaded":
                     ok = bool(val)
                     self.lbl_model_state.configure(text="已加载" if ok else "加载失败",
@@ -489,6 +497,18 @@ class App(tk.Tk):
         self._log(f"已切换 HuggingFace 源: {'hf-mirror.com（国内镜像）' if val == '国内镜像' else '官方 huggingface.co'}")
 
     # ------------------------------------------------------------ tag
+    def _on_update_tags(self) -> None:
+        self.btn_tagupd.configure(state="disabled")
+        self._log("开始更新 Tag 库（自动尝试 GitHub 直连与代理源）…")
+
+        def work() -> None:
+            ok = engine.update_tags_from_github(self._log)
+            if ok:
+                taglib.reload_tags()
+                self.q.put(("tags_updated", True))
+
+        threading.Thread(target=work, daemon=True).start()
+
     def _refresh_tags(self) -> None:
         kw = self.var_tagsearch.get()
         cat = self.var_cat.get()

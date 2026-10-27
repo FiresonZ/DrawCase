@@ -240,6 +240,115 @@ REQUIRED_PKGS = [
     "huggingface_hub>=0.26.0",
 ]
 
+# 国内 PyPI 镜像表（自动依次尝试，直到成功）
+PIP_MIRRORS = [
+    "https://pypi.tuna.tsinghua.edu.cn/simple",      # 清华
+    "https://mirrors.aliyun.com/pypi/simple",         # 阿里云
+    "https://mirrors.cloud.tencent.com/pypi/simple",  # 腾讯云
+    "https://mirrors.ustc.edu.cn/pypi/simple",        # 中科大
+    "https://pypi.org/simple",                        # 官方
+]
+
+
+def detect_system_proxy() -> str:
+    """自动搜寻代理：Windows 系统代理（注册表）→ 环境变量. 返回代理 URL 或空串."""
+    if sys.platform.startswith("win"):
+        try:
+            import winreg  # type: ignore
+
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            )
+            enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            if enable:
+                server, _ = winreg.QueryValueEx(key, "ProxyServer")
+                if server:
+                    if "=" not in server:  # 形如 127.0.0.1:7890
+                        return f"http://{server}"
+                    for part in server.split(";"):  # 形如 http=..;https=..
+                        k, _, v = part.partition("=")
+                        if k.lower() in ("http", "https") and v:
+                            return ("" if v.startswith("http") else "http://") + v
+        except Exception:
+            pass
+    return (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or ""
+    )
+
+
+def _apply_proxy(log: Callable[[str], None]) -> None:
+    p = detect_system_proxy()
+    if p:
+        os.environ.setdefault("HTTP_PROXY", p)
+        os.environ.setdefault("HTTPS_PROXY", p)
+        log(f"已自动使用系统代理: {p}")
+
+
+def ensure_deps(
+    log: Optional[Callable[[str], None]] = None,
+    progress: Optional[Callable[[str, float], None]] = None,
+) -> bool:
+    """自动补齐 AI 运行依赖（装到用户数据目录，升级重装不重装）。返回是否成功."""
+
+    def say(m: str) -> None:
+        if log:
+            log(m)
+
+    def prog(name: str, frac: float) -> None:
+        if progress:
+            progress(name, frac)
+
+    ensure_runtime_path()
+    _apply_proxy(log)
+    st = deps_status()
+    if st["libs"] and st["torch"]:
+        say("所有 AI 依赖已安装 ✓（如需更换 GPU/CPU 版 torch 可手动处理）")
+        prog("PyTorch", 1.0)
+        return True
+
+    if not st["libs"]:
+        missing = []
+        for pkg in REQUIRED_PKGS:
+            name = pkg.split(">=")[0].split("<")[0]
+            try:
+                __import__(name)
+            except Exception:
+                missing.append(pkg)
+        say(f"正在安装依赖库: {', '.join(missing)} ...")
+        rc = 1
+        for i, idx in enumerate(PIP_MIRRORS):  # 镜像表自动切换
+            say(f"使用镜像源 ({i + 1}/{len(PIP_MIRRORS)}): {idx}")
+            rc = _pip(["-i", idx, *missing], progress=lambda f: prog("依赖库", f))
+            if rc == 0:
+                break
+            say(f"该源不可用，尝试下一个…")
+        if rc != 0:
+            say("依赖安装失败，请检查网络或手动安装。")
+            return False
+
+    if not has_torch():
+        gpu = _has_nvidia_gpu()
+        if gpu:
+            say("检测到 NVIDIA 显卡，正在安装 CUDA 版 PyTorch（约 2.5GB，请耐心等待）...")
+            rc = _pip(
+                ["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124"],
+                progress=lambda f: prog("PyTorch", f),
+            )
+        else:
+            say("未检测到 NVIDIA 显卡，安装 CPU 版 PyTorch（约 200MB）...")
+            rc = _pip(["torch", "torchvision"], progress=lambda f: prog("PyTorch", f))
+        if rc != 0:
+            say("PyTorch 安装失败，请检查网络后重试。")
+            return False
+    prog("PyTorch", 1.0)
+    say("依赖自检完成 ✓")
+    return True
+
 
 class _ProgressCapture:
     """捕获 pip 输出并解析百分比（tqdm 进度条形如  42%|███ |）."""
@@ -329,62 +438,66 @@ def deps_status() -> dict:
     return {"libs": libs, "torch": has_torch()}
 
 
-def ensure_deps(
-    log: Optional[Callable[[str], None]] = None,
-    progress: Optional[Callable[[str, float], None]] = None,
-) -> bool:
-    """自动补齐 AI 运行依赖（装到用户数据目录，升级重装不重装）。返回是否成功."""
+# ---------------------------------------------------------------- Tag 库远程更新
 
-    def say(m: str) -> None:
-        if log:
-            log(m)
+# GitHub 代理表（ghproxy 系），依次尝试；空串为直连 raw.githubusercontent.com
+GH_PROXIES = [
+    "",
+    "https://ghproxy.net",
+    "https://gh-proxy.com",
+    "https://ghfast.top",
+    "https://ghproxy.cc",
+    "https://mirror.ghproxy.com",
+]
 
-    def prog(name: str, frac: float) -> None:
-        if progress:
-            progress(name, frac)
 
-    ensure_runtime_path()
-    st = deps_status()
-    if st["libs"] and st["torch"]:
-        say("所有 AI 依赖已安装 ✓（如需更换 GPU/CPU 版 torch 可手动处理）")
-        prog("PyTorch", 1.0)
-        return True
+def tags_remote_path() -> str:
+    return os.path.join(appdata(), "tags_remote.json")
 
-    if not st["libs"]:
-        missing = []
-        for pkg in REQUIRED_PKGS:
-            name = pkg.split(">=")[0].split("<")[0]
-            try:
-                __import__(name)
-            except Exception:
-                missing.append(pkg)
-        say(f"正在安装依赖库: {', '.join(missing)} ...")
-        idx = os.environ.get("PIP_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
-        rc = _pip(["-i", idx, *missing], progress=lambda f: prog("依赖库", f))
-        if rc != 0:
-            say("镜像源安装失败，尝试官方源...")
-            rc = _pip(missing, progress=lambda f: prog("依赖库", f))
-        if rc != 0:
-            say("依赖安装失败，请检查网络或手动安装。")
-            return False
 
-    if not has_torch():
-        gpu = _has_nvidia_gpu()
-        if gpu:
-            say("检测到 NVIDIA 显卡，正在安装 CUDA 版 PyTorch（约 2.5GB，请耐心等待）...")
-            rc = _pip(
-                ["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124"],
-                progress=lambda f: prog("PyTorch", f),
-            )
-        else:
-            say("未检测到 NVIDIA 显卡，安装 CPU 版 PyTorch（约 200MB）...")
-            rc = _pip(["torch", "torchvision"], progress=lambda f: prog("PyTorch", f))
-        if rc != 0:
-            say("PyTorch 安装失败，请检查网络后重试。")
-            return False
-    prog("PyTorch", 1.0)
-    say("依赖自检完成 ✓")
-    return True
+def local_tag_version() -> int:
+    """当前生效的 Tag 库版本（远程更新过则取远程版本，否则内置版本）."""
+    import json as _json
+
+    try:
+        with open(tags_remote_path(), "r", encoding="utf-8") as f:
+            return int(_json.load(f).get("version", 0))
+    except Exception:
+        from . import taglib
+
+        return taglib.BUILTIN_VERSION
+
+
+def update_tags_from_github(log: Callable[[str], None]) -> bool:
+    """经 GitHub 代理表下载仓库 data/tags.json 更新本地 Tag 库."""
+    import json as _json
+    import urllib.request
+
+    from . import taglib
+    from .version_info import GH_BRANCH, GH_REPO
+
+    raw = f"https://raw.githubusercontent.com/{GH_REPO}/{GH_BRANCH}/data/tags.json"
+    _apply_proxy(log)
+    for prefix in GH_PROXIES:
+        url = (prefix + "/" + raw) if prefix else raw
+        try:
+            log(f"尝试下载 Tag 库: {url}")
+            req = urllib.request.Request(url, headers={"User-Agent": "QwenImageStudio"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+            version = int(data.get("version", 0))
+            tags = data.get("tags", [])
+            if version < taglib.BUILTIN_VERSION or not tags:
+                log("远端 Tag 库不比内置新，已是最新。")
+                return True
+            with open(tags_remote_path(), "w", encoding="utf-8") as f:
+                _json.dump(data, f, ensure_ascii=False)
+            log(f"Tag 库已更新到 v{version}（共 {len(tags)} 条，重启界面或点搜索刷新）")
+            return True
+        except Exception as e:
+            log(f"该源不可用: {e}")
+    log("Tag 库更新失败：所有 GitHub 源均不可访问，请检查网络。")
+    return False
 
 
 # ---------------------------------------------------------------- 生成

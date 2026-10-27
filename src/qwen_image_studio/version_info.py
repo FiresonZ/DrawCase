@@ -7,6 +7,10 @@ AUTHOR_EMAIL = "dev@gith.uk"
 HOMEPAGE = "https://github.com/FiresonZ"
 VERSION = "0.1.0"
 
+# Tag 库远程更新（提交在仓库 data/tags.json，经 GitHub 代理加速下载）
+GH_REPO = "FiresonZ/QwenImageStudio"
+GH_BRANCH = "main"
+
 # 首选项 / 用户数据存放目录（升级覆盖安装时保留）
 import os
 import sys

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from typing import Dict, List, Tuple
 
@@ -300,20 +301,26 @@ _RAW: List[Tuple[str, str, str]] = [
 
 CATEGORY_ORDER = ["画质", "人物", "服装", "动作", "构图", "风格", "场景", "氛围", "负面"]
 
+BUILTIN_VERSION = 1  # 内置 Tag 库版本（data/tags.json 远程更新时递增）
 
-def _builtin_tags() -> List[Tuple[str, str, str]]:
-    # 允许用户在 appdata 下覆盖/追加 tag
-    extra = os.path.join(_appdata(), "tags_extra.csv")
-    out = [(z, e, c) for z, e, c in _RAW]
+_CACHE: List[Tuple[str, str, str]] = []
+
+
+def _remote_tags() -> Optional[List[Tuple[str, str, str]]]:
+    """加载远程更新的 Tag 库（appdata/tags_remote.json，由引擎经 GitHub 代理下载）."""
     try:
-        if os.path.isfile(extra):
-            with open(extra, "r", encoding="utf-8-sig") as f:
-                for row in csv.reader(f):
-                    if len(row) >= 2:
-                        out.append((row[0].strip(), row[1].strip(), (row[2].strip() if len(row) > 2 else "自定义")))
+        from .version_info import appdata_dir
+
+        p = os.path.join(appdata_dir(), "tags_remote.json")
+        if not os.path.isfile(p):
+            return None
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if int(data.get("version", 0)) >= BUILTIN_VERSION and data.get("tags"):
+            return [(str(z), str(e), str(c)) for z, e, c in data["tags"]]
     except Exception:
         pass
-    return out
+    return None
 
 
 def _appdata() -> str:
@@ -324,10 +331,37 @@ def _appdata() -> str:
     return d
 
 
+def load_tags() -> List[Tuple[str, str, str]]:
+    """内置库（或远程更新版）+ 用户 tags_extra.csv 追加，带缓存."""
+    global _CACHE
+    if _CACHE:
+        return _CACHE
+    base = _remote_tags()
+    if base is None:
+        base = [(z, e, c) for z, e, c in _RAW]
+    extra = os.path.join(_appdata(), "tags_extra.csv")
+    try:
+        if os.path.isfile(extra):
+            with open(extra, "r", encoding="utf-8-sig") as f:
+                for row in csv.reader(f):
+                    if len(row) >= 2:
+                        base.append((row[0].strip(), row[1].strip(), (row[2].strip() if len(row) > 2 else "自定义")))
+    except Exception:
+        pass
+    _CACHE = base
+    return base
+
+
+def reload_tags() -> None:
+    """外部更新 Tag 库后调用，清空缓存."""
+    global _CACHE
+    _CACHE = []
+
+
 def search_tags(keyword: str) -> List[Tuple[str, str, str]]:
     """搜索：命中中文名、英文 tag 或分类。空关键词返回前 80 条."""
     kw = (keyword or "").strip().lower()
-    tags = _builtin_tags()
+    tags = load_tags()
     if not kw:
         return tags[:80]
     res = []
@@ -341,7 +375,13 @@ def categories() -> List[str]:
     seen = []
     for c in CATEGORY_ORDER:
         seen.append(c)
-    for _, _, c in _builtin_tags():
+    for _, _, c in load_tags():
         if c not in seen:
             seen.append(c)
     return seen
+
+
+def dump_builtin_json(path: str) -> None:
+    """把内置 Tag 库导出为仓库 data/tags.json 格式（维护用）."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"version": BUILTIN_VERSION, "tags": [list(t) for t in _RAW]}, f, ensure_ascii=False, indent=1)
