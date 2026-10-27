@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import json
 import os
-from typing import Dict, List, Tuple
+from typing import List, Optional, Tuple
 
 # (中文名, 英文tag, 分类)
 _RAW: List[Tuple[str, str, str]] = [

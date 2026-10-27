@@ -167,6 +167,11 @@ def start_api(port: int, generate_fn: Callable, loaded_fn: Callable[[], bool], l
     global _api
     if _api is None:
         _api = ApiServer(generate_fn, loaded_fn, log)
+    else:
+        # 复用端口实例时刷新引用，避免闭包过期
+        _api._generate = generate_fn
+        _api._loaded = loaded_fn
+        _api._log = log
     return _api.start(port)
 
 

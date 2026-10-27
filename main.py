@@ -1,7 +1,6 @@
 """应用入口：DrawCase.exe."""
 
 import multiprocessing
-import sys
 
 
 def main() -> None:

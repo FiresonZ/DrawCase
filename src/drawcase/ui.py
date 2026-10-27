@@ -16,17 +16,10 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.constants import BOTH, LEFT, RIGHT, X, Y
-from typing import Callable, List, Optional
+from typing import Optional
 
 from . import engine, taglib
 from .version_info import APP_NAME, APP_NAME_ZH, AUTHOR, AUTHOR_EMAIL, VERSION
-
-try:
-    import ttkbootstrap as ttkb  # noqa: F401
-
-    HAS_TTB = True
-except Exception:  # pragma: no cover
-    HAS_TTB = False
 
 PALETTE = {
     "bg": "#1e1f24",

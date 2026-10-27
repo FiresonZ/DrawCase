@@ -356,7 +356,7 @@ def ensure_deps(
             rc = _pip(["-i", idx, *missing], progress=lambda f: prog("依赖库", f))
             if rc == 0:
                 break
-            say(f"该源不可用，尝试下一个…")
+            say("该源不可用，尝试下一个…")
         if rc != 0:
             say("依赖安装失败，请检查网络或手动安装。")
             return False
