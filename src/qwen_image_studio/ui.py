@@ -1,9 +1,10 @@
 """现代化轻量 UI（ttkbootstrap，如不可用则回退到纯 ttk 深色主题）.
 
 布局：
-- 左侧: 生成参数（提示词 + tag 库面板 / 负面提示 / 尺寸步数 CFG 种子）
-- 右侧: 预览大图 + 状态日志
-- 顶部: 模型选择 / 模型管理（下载）/ 依赖自检
+- 顶部: 标题 / 依赖自检 / 输出目录 / 关于 + 本地模型选择行
+- 左侧: 提示词与参数、中文 Tag 库、设置页（模型系列切换 / 本地模型选择 /
+        模型文件夹管理 / 依赖状态进度 / HF 源）
+- 右侧: 预览大图 + 进度 + 日志
 - 底部状态栏: 作者信息 + 版本
 """
 
@@ -20,8 +21,7 @@ from . import engine, taglib
 from .version_info import APP_NAME, APP_NAME_ZH, AUTHOR, AUTHOR_EMAIL, VERSION
 
 try:
-    import ttkbootstrap as ttkb
-    from ttkbootstrap.constants import BOTH, END, LEFT, RIGHT, X, Y
+    import ttkbootstrap as ttkb  # noqa: F401
 
     HAS_TTB = True
 except Exception:  # pragma: no cover
@@ -57,11 +57,10 @@ def _dark_style(style: ttk.Style) -> None:
     style.map("TButton", background=[("active", PALETTE["accent"])])
     style.configure("Accent.TButton", background=PALETTE["accent"], foreground="#ffffff")
     style.map("Accent.TButton", background=[("active", "#6a5ae0"), ("disabled", "#555")])
-    style.configure("Danger.TButton", background=PALETTE["err"], foreground="#ffffff")
-    style.map("Danger.TButton", background=[("active", "#e05555")])
     style.configure("TEntry", fieldbackground=PALETTE["panel2"], foreground=PALETTE["fg"], insertcolor=PALETTE["fg"], borderwidth=0)
     style.configure("TRadiobutton", background=PALETTE["bg"], foreground=PALETTE["fg"], focusthickness=0)
     style.map("TRadiobutton", background=[("active", PALETTE["bg"])])
+    style.configure("TCheckbutton", background=PALETTE["bg"], foreground=PALETTE["fg"], focusthickness=0)
     style.configure("TCombobox", fieldbackground=PALETTE["panel2"], foreground=PALETTE["fg"], arrowcolor=PALETTE["fg"], borderwidth=0)
     style.map("TCombobox", fieldbackground=[("readonly", PALETTE["panel2"])])
     style.configure("Vertical.TScrollbar", background=PALETTE["panel2"], troughcolor=PALETTE["bg"], borderwidth=0)
@@ -85,6 +84,7 @@ class App(tk.Tk):
         self.gen = engine.Generator()
         self._busy = False
         self._preview_path: Optional[str] = None
+        self._model_map: dict = {}
 
         style = ttk.Style(self)
         _dark_style(style)
@@ -104,26 +104,22 @@ class App(tk.Tk):
 
         right = ttk.Frame(bar, style="Panel.TFrame")
         right.pack(side=RIGHT)
-        self.btn_deps = ttk.Button(right, text="依赖自检", command=self._on_check_deps)
-        self.btn_deps.pack(side=LEFT, padx=4)
         ttk.Button(right, text="输出目录", command=self._open_outputs).pack(side=LEFT, padx=4)
         ttk.Button(right, text="关于", command=self._show_about).pack(side=LEFT, padx=4)
 
-        # 模型行
+        # 模型行（本地扫描结果）
         row = ttk.Frame(self, style="TFrame", padding=(14, 8, 14, 0))
         row.pack(fill=X)
         ttk.Label(row, text="模型", style="Sub.TLabel").pack(side=LEFT, padx=(0, 6))
-        self.cmb_model = ttk.Combobox(row, state="readonly", width=42)
+        self.cmb_model = ttk.Combobox(row, state="readonly", width=48)
         self.cmb_model.pack(side=LEFT)
-        self.cmb_model.bind("<<ComboboxSelected>>", lambda e: self._refresh_weights())
-        ttk.Label(row, text="权重", style="Sub.TLabel").pack(side=LEFT, padx=(12, 6))
-        self.cmb_weight = ttk.Combobox(row, state="readonly", width=34)
-        self.cmb_weight.pack(side=LEFT)
-        ttk.Button(row, text="模型管理…", command=self._open_models).pack(side=LEFT, padx=10)
+        ttk.Button(row, text="刷新", width=5, command=self._refresh_model_combo).pack(side=LEFT, padx=(6, 0))
         self.btn_load = ttk.Button(row, text="加载模型", style="Accent.TButton", command=self._on_load_model)
-        self.btn_load.pack(side=LEFT)
+        self.btn_load.pack(side=LEFT, padx=(12, 0))
         self.lbl_model_state = ttk.Label(row, text="未加载", style="Sub.TLabel")
         self.lbl_model_state.pack(side=LEFT, padx=10)
+        ttk.Label(row, text="（模型请放入安装目录 models 文件夹或设置里的自定义文件夹）",
+                  style="Sub.TLabel").pack(side=LEFT, padx=(0, 10))
 
     def _build_body(self) -> None:
         body = ttk.Frame(self, style="TFrame")
@@ -153,34 +149,61 @@ class App(tk.Tk):
         self.txt_neg.pack(fill=X)
         self.txt_neg.insert("1.0", "low quality, worst quality, blurry, watermark, text, bad hands")
 
-        # --- 下载 / 设置 ---
-        tab_dl = ttk.Frame(nb, style="TFrame", padding=(6, 8))
-        nb.add(tab_dl, text="下载 / 设置")
+        # --- 设置页 ---
+        tab_set = ttk.Frame(nb, style="TFrame", padding=(6, 8))
+        nb.add(tab_set, text="设置")
 
-        srow = ttk.Frame(tab_dl, style="TFrame")
-        srow.pack(fill=X)
-        ttk.Label(srow, text="HuggingFace 源:", style="Sub.TLabel").pack(side=LEFT)
+        # 模型系列
+        frow = ttk.Frame(tab_set, style="TFrame")
+        frow.pack(fill=X)
+        ttk.Label(frow, text="模型系列:", style="Sub.TLabel").pack(side=LEFT)
+        self.var_family = tk.StringVar(value=engine.FAMILY_LABELS.get(engine.get_family(), "Qwen-Image 系"))
+        for fam, label in engine.FAMILY_LABELS.items():
+            ttk.Radiobutton(frow, text=label, value=label, variable=self.var_family,
+                            command=lambda f=fam: self._on_family_change(f)).pack(side=LEFT, padx=(10, 0))
+
+        # 本地模型选择
+        mrow = ttk.Frame(tab_set, style="TFrame")
+        mrow.pack(fill=X, pady=(10, 0))
+        ttk.Label(mrow, text="本地模型:", style="Sub.TLabel").pack(side=LEFT)
+        self.cmb_set_model = ttk.Combobox(mrow, state="readonly", width=32)
+        self.cmb_set_model.pack(side=LEFT, padx=(6, 6))
+        ttk.Button(mrow, text="使用", style="Accent.TButton", width=6, command=self._on_use_model).pack(side=LEFT)
+
+        # 模型文件夹管理
+        dcard = ttk.Labelframe(tab_set, text=" 模型文件夹（升级重装不会覆盖其中的模型） ", style="Card.TLabelframe", padding=8)
+        dcard.pack(fill=X, pady=(10, 0))
+        self.lst_dirs = tk.Listbox(dcard, height=4, bg=PALETTE["panel2"], fg=PALETTE["fg"],
+                                   relief="flat", selectbackground=PALETTE["accent"])
+        self.lst_dirs.pack(fill=X)
+        brow = ttk.Frame(dcard, style="Panel.TFrame")
+        brow.pack(fill=X, pady=(6, 0))
+        ttk.Button(brow, text="添加文件夹…", command=self._on_add_dir).pack(side=LEFT)
+        ttk.Button(brow, text="移除选中", command=self._on_remove_dir).pack(side=LEFT, padx=6)
+        ttk.Button(brow, text="打开内置模型目录", command=self._open_model_root).pack(side=LEFT)
+        self.lbl_builtin = ttk.Label(dcard, text=f"内置: {engine.builtin_model_root('qwen')} 与 …\\SDXL",
+                                     style="Panel.Sub.TLabel", wraplength=380, justify="left")
+        self.lbl_builtin.pack(anchor="w", pady=(4, 0))
+
+        # 依赖状态
+        ecard = ttk.Labelframe(tab_set, text=" AI 运行依赖（首次使用自动安装，装在用户数据目录） ", style="Card.TLabelframe", padding=8)
+        ecard.pack(fill=X, pady=(10, 0))
+        self.lbl_deps = ttk.Label(ecard, text="检查中…", style="Panel.Sub.TLabel")
+        self.lbl_deps.pack(anchor="w")
+        self.deps_bar = ttk.Progressbar(ecard, maximum=100, value=0)
+        self.deps_bar.pack(fill=X, pady=6)
+        ttk.Button(ecard, text="检测 / 安装依赖", command=self._on_check_deps).pack(anchor="w")
+
+        # HF 源
+        hrow = ttk.Frame(tab_set, style="TFrame")
+        hrow.pack(fill=X, pady=(10, 0))
+        ttk.Label(hrow, text="HuggingFace 源:", style="Sub.TLabel").pack(side=LEFT)
         self.var_mirror = tk.StringVar(value="国内镜像" if engine.get_hf_endpoint() else "官方源")
         for text, val in (("官方源", "官方源"), ("国内镜像 hf-mirror.com", "国内镜像")):
-            rb = ttk.Radiobutton(srow, text=text, value=val, variable=self.var_mirror,
-                                 command=self._apply_mirror)
-            rb.pack(side=LEFT, padx=(8, 0))
-
-        dcard = ttk.Labelframe(tab_dl, text=" 下载进度 ", style="Card.TLabelframe", padding=10)
-        dcard.pack(fill=X, pady=(10, 0))
-        self.lbl_dl_repo = ttk.Label(dcard, text="无下载任务", style="Panel.Sub.TLabel")
-        self.lbl_dl_repo.pack(anchor="w")
-        self.dl_bar = ttk.Progressbar(dcard, maximum=100, value=0)
-        self.dl_bar.pack(fill=X, pady=6)
-        prow = ttk.Frame(dcard, style="Panel.TFrame")
-        prow.pack(fill=X)
-        self.lbl_dl_speed = ttk.Label(prow, text="", style="Panel.Sub.TLabel")
-        self.lbl_dl_speed.pack(side=LEFT)
-        self.lbl_dl_msg = ttk.Label(prow, text="", style="Panel.Sub.TLabel")
-        self.lbl_dl_msg.pack(side=RIGHT)
-        ttk.Label(tab_dl, text="提示：在「模型管理」中选择仓库点击下载，进度将在此实时显示。\n"
-                               "GGUF 模型首次加载时会自动补齐对应版本的基础组件（文本编码器/VAE）。",
-                  style="Sub.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(10, 0))
+            ttk.Radiobutton(hrow, text=text, value=val, variable=self.var_mirror,
+                            command=self._apply_mirror).pack(side=LEFT, padx=(8, 0))
+        ttk.Label(tab_set, text="镜像源用于 GGUF 模型首次加载时自动补齐官方基础组件（文本编码器/VAE）。",
+                  style="Sub.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(6, 0))
 
         # --- tag 库 ---
         tag_card = ttk.Labelframe(left, text=" 中文 Tag 库（点击插入 / 右键追加负面） ", style="Card.TLabelframe", padding=10)
@@ -272,7 +295,7 @@ class App(tk.Tk):
         self.progress.pack(fill=X, pady=(10, 4))
 
         log_card = ttk.Labelframe(right, text=" 日志 ", style="Card.TLabelframe", padding=6)
-        log_card.pack(fill=BOTH, pady=(0, 0))
+        log_card.pack(fill=BOTH)
         self.txt_log = tk.Text(log_card, height=7, wrap="word", bg="#17181c", fg=PALETTE["sub"],
                                relief="flat", font=("Consolas", 9))
         self.txt_log.pack(fill=BOTH, expand=True)
@@ -284,7 +307,7 @@ class App(tk.Tk):
         self.lbl_status.pack(side=LEFT)
         ttk.Label(bar, text=f"{AUTHOR} <{AUTHOR_EMAIL}>  ·  {APP_NAME} v{VERSION}", style="Panel.Sub.TLabel").pack(side=RIGHT)
 
-    # ------------------------------------------------------------ 逻辑
+    # ------------------------------------------------------------ 队列
     def _log(self, msg: str) -> None:
         self.q.put(("log", msg))
 
@@ -299,23 +322,25 @@ class App(tk.Tk):
             while True:
                 kind, val = self.q.get_nowait()
                 if kind == "log":
-                    self.txt_log.insert(END, str(val) + "\n")
-                    self.txt_log.see(END)
+                    self.txt_log.insert("end", str(val) + "\n")
+                    self.txt_log.see("end")
                 elif kind == "status":
                     self.lbl_status.configure(text=str(val))
                 elif kind == "progress":
                     self.progress.configure(value=float(val) * 100)
                 elif kind == "preview":
                     self._show_preview(str(val))
-                elif kind == "download":
-                    self._update_download_panel(dict(val))
+                elif kind == "deps":
+                    name, frac = val
+                    self.lbl_deps.configure(text=f"正在安装 {name} … {int(frac * 100)}%")
+                    self.deps_bar.configure(value=float(frac) * 100)
+                elif kind == "deps_status":
+                    self._update_deps_status(dict(val))
                 elif kind == "model_loaded":
                     ok = bool(val)
                     self.lbl_model_state.configure(text="已加载" if ok else "加载失败",
                                                    foreground=PALETTE["ok"] if ok else PALETTE["err"])
                     self.btn_load.configure(state="normal")
-                elif kind == "deps_done":
-                    self.btn_deps.configure(state="normal")
                 elif kind == "busy":
                     self._busy = bool(val)
                     self.btn_gen.configure(state="disabled" if self._busy else "normal")
@@ -323,81 +348,133 @@ class App(tk.Tk):
             pass
         self.after(80, self._poll_queue)
 
-    # ---------- 下载 / 镜像 ----------
-    def _apply_mirror(self) -> None:
-        val = self.var_mirror.get()
-        engine.set_hf_endpoint(engine.HF_MIRROR if val == "国内镜像" else engine.HF_OFFICIAL)
-        self._log(f"已切换 HuggingFace 源: {'hf-mirror.com（国内镜像）' if val == '国内镜像' else '官方 huggingface.co'}")
-
-    def _update_download_panel(self, st: dict) -> None:
-        repo = st.get("repo")
-        self.lbl_dl_repo.configure(text=repo or "无下载任务")
-        self.dl_bar.configure(value=float(st.get("pct", 0)) * 100)
-        speed = int(st.get("speed") or 0)
-        self.lbl_dl_speed.configure(text=f"{speed / 1048576:.1f} MB/s" if speed > 0 else "")
-        msg = str(st.get("msg") or "")
-        if st.get("ok") is True:
-            msg = "✓ " + msg
-        elif st.get("ok") is False:
-            msg = "✗ " + msg
-        self.lbl_dl_msg.configure(text=msg)
-
-    def start_download(self, repo: str, filename: Optional[str] = None) -> None:
-        """由「模型管理」触发，进度显示在「下载 / 设置」页."""
-        engine.start_download(repo, self._log, lambda st: self.q.put(("download", st)), filename=filename)
-
+    # ------------------------------------------------------------ 初始化
     def _on_first_run(self) -> None:
         engine.apply_saved_endpoint()  # 在任何 huggingface_hub 导入前恢复镜像设置
         self._refresh_model_combo()
+        self._refresh_set_model_combo()
+        self._refresh_dirs()
         self._log(f"{APP_NAME} v{VERSION}  作者: {AUTHOR} <{AUTHOR_EMAIL}>")
-        self._log("提示: 首次使用请先「依赖自检」，再到「模型管理」下载模型。")
+        self._log("首次使用：软件正在自动安装 AI 依赖（详见「设置」页进度），"
+                  "然后把下载好的模型放入安装目录 models 文件夹。")
+        threading.Thread(target=self._ensure_deps_bg, daemon=True).start()
+
+    # ------------------------------------------------------------ 依赖
+    def _update_deps_status(self, st: dict) -> None:
+        if st.get("libs") and st.get("torch"):
+            self.lbl_deps.configure(text="已安装 ✓（全部 AI 运行依赖就绪）", foreground=PALETTE["ok"])
+            self.deps_bar.configure(value=100)
+        else:
+            miss = []
+            if not st.get("libs"):
+                miss.append("依赖库（diffusers 等）")
+            if not st.get("torch"):
+                miss.append("PyTorch")
+            self.lbl_deps.configure(text="未安装: " + "、".join(miss), foreground=PALETTE["warn"])
+
+    def _on_check_deps(self) -> None:
         threading.Thread(target=self._ensure_deps_bg, daemon=True).start()
 
     def _ensure_deps_bg(self) -> None:
-        ok = engine.ensure_deps(self._log)
-        self.q.put(("deps_done", ok))
+        self.q.put(("deps_status", engine.deps_status()))
+        ok = engine.ensure_deps(
+            log=self._log,
+            progress=lambda name, frac: self.q.put(("deps", (name, frac))),
+        )
+        self.q.put(("deps_status", engine.deps_status()))
         if ok:
             self._log("环境就绪 ✓")
 
-    # ---------- 依赖 ----------
-    def _on_check_deps(self) -> None:
-        self.btn_deps.configure(state="disabled")
-        threading.Thread(target=self._ensure_deps_bg, daemon=True).start()
-
-    # ---------- 模型 ----------
+    # ------------------------------------------------------------ 模型
     def _refresh_model_combo(self) -> None:
-        local = engine.list_local_models()
-        if local:
-            self.cmb_model["values"] = local
+        """刷新主界面模型下拉（按当前系列扫描本地文件夹）."""
+        fam = engine.get_family()
+        models = engine.scan_models(fam)
+        self._model_map = {m["name"]: m for m in models}
+        names = list(self._model_map.keys())
+        self.cmb_model["values"] = names
+        self.cmb_set_model["values"] = names
+        active = engine.get_active_model()
+        if active and active["name"] in self._model_map:
+            self.cmb_model.set(active["name"])
+            self.cmb_set_model.set(active["name"])
+        elif names:
             self.cmb_model.current(0)
-            self._refresh_weights()
+            self.cmb_set_model.set(names[0])
         else:
-            self.cmb_model["values"] = []
-            self._log("本地暂无模型，请打开「模型管理」下载。")
+            self.cmb_model.set("")
+            self.cmb_set_model.set("")
+        if not names:
+            self._log(f"「{engine.FAMILY_LABELS.get(fam)}」暂无本地模型，请把模型放入: {engine.builtin_model_root(fam)}")
 
-    def _refresh_weights(self) -> None:
-        repo = self.cmb_model.get()
-        files = engine.get_model_files(repo) if repo else []
-        self.cmb_weight["values"] = ["（自动）"] + files
-        self.cmb_weight.current(0)
+    def _refresh_set_model_combo(self) -> None:
+        pass  # 与主界面下拉同步刷新（_refresh_model_combo 已同时更新）
+
+    def _on_family_change(self, family: str) -> None:
+        engine.set_family(family)
+        self._log(f"已切换模型系列: {engine.FAMILY_LABELS.get(family)}")
+        self._refresh_model_combo()
+        self.lbl_builtin.configure(
+            text=f"内置: {engine.builtin_model_root('qwen')} 与 {engine.builtin_model_root('sdxl')}")
+
+    def _on_use_model(self) -> None:
+        name = self.cmb_set_model.get()
+        if not name:
+            messagebox.showinfo(APP_NAME, "没有可选模型，请先在模型文件夹中放入模型后点「刷新」。")
+            return
+        entry = self._model_map.get(name)
+        if entry:
+            engine.set_active_model(entry)
+            self.cmb_model.set(name)
+            self._log(f"已选择使用模型: {name}")
 
     def _on_load_model(self) -> None:
-        repo = self.cmb_model.get()
-        if not repo:
-            messagebox.showinfo(APP_NAME, "请先下载或选择模型。")
+        name = self.cmb_model.get()
+        entry = self._model_map.get(name) or engine.get_active_model()
+        if not entry:
+            messagebox.showinfo(APP_NAME, "请先在模型文件夹中放入模型，并在「设置」页选择。")
             return
-        weight = None if self.cmb_weight.get() in ("（自动）", "") else self.cmb_weight.get()
+        path = entry["path"]
         self.btn_load.configure(state="disabled")
         self.lbl_model_state.configure(text="加载中…", foreground=PALETTE["warn"])
 
         def work() -> None:
-            ok = self.gen.load(repo, weight, self._log)
+            ok = self.gen.load(path, self._log)
             self.q.put(("model_loaded", ok))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _open_models(self) -> None:
-        ModelsDialog(self)
+    # ------------------------------------------------------------ 模型文件夹
+    def _refresh_dirs(self) -> None:
+        self.lst_dirs.delete(0, "end")
+        for d in engine.custom_model_dirs():
+            self.lst_dirs.insert("end", d)
+        self.lbl_builtin.configure(
+            text=f"内置: {engine.builtin_model_root('qwen')} 与 {engine.builtin_model_root('sdxl')}")
+
+    def _on_add_dir(self) -> None:
+        d = filedialog.askdirectory(title="选择模型文件夹")
+        if d:
+            engine.add_model_dir(os.path.normpath(d))
+            self._refresh_dirs()
+            self._refresh_model_combo()
+            self._log(f"已添加模型文件夹: {d}")
+
+    def _on_remove_dir(self) -> None:
+        sel = self.lst_dirs.curselection()
+        if sel:
+            d = self.lst_dirs.get(sel[0])
+            engine.remove_model_dir(d)
+            self._refresh_dirs()
+            self._refresh_model_combo()
+            self._log(f"已移除模型文件夹: {d}")
+
+    def _open_model_root(self) -> None:
+        d = engine.builtin_model_root(engine.get_family())
+        try:
+            os.startfile(d)  # type: ignore[attr-defined]
+        except Exception:
+            self._log(f"模型目录: {d}")
 
     def _open_outputs(self) -> None:
         try:
@@ -405,7 +482,13 @@ class App(tk.Tk):
         except Exception:
             self._log(f"输出目录: {engine.outputs_dir()}")
 
-    # ---------- tag ----------
+    # ------------------------------------------------------------ HF 源
+    def _apply_mirror(self) -> None:
+        val = self.var_mirror.get()
+        engine.set_hf_endpoint(engine.HF_MIRROR if val == "国内镜像" else engine.HF_OFFICIAL)
+        self._log(f"已切换 HuggingFace 源: {'hf-mirror.com（国内镜像）' if val == '国内镜像' else '官方 huggingface.co'}")
+
+    # ------------------------------------------------------------ tag
     def _refresh_tags(self) -> None:
         kw = self.var_tagsearch.get()
         cat = self.var_cat.get()
@@ -414,14 +497,13 @@ class App(tk.Tk):
             items = [t for t in items if t[2] == cat]
         self.tree.delete(*self.tree.get_children())
         for zh, en, c in items:
-            self.tree.insert("", END, values=(zh, en, c))
+            self.tree.insert("", "end", values=(zh, en, c))
 
     def _insert_tag(self, en: str, target: Optional[tk.Text]) -> None:
         tgt = target or (self.txt_neg if self._focus_is_neg() else self.txt_prompt)
-        cur = tgt.get("1.0", END).strip()
-        sep = ", " if cur and not cur.endswith(",") else ("" if not cur else " ")
-        tgt.insert(END, (sep if cur else "") + en + ("," if not cur.endswith(",") else ""))
-        tgt.see(END)
+        cur = tgt.get("1.0", "end").strip()
+        tgt.insert("end", (", " if cur and not cur.endswith(",") else "") + en + ",")
+        tgt.see("end")
 
     def _focus_is_neg(self) -> bool:
         w = self.focus_get()
@@ -443,16 +525,16 @@ class App(tk.Tk):
             menu.add_command(label="插入到负面提示词", command=lambda: self._insert_tag(en, self.txt_neg))
             menu.tk_popup(event.x_root, event.y_root)
 
-    # ---------- 生成 ----------
+    # ------------------------------------------------------------ 生成
     def _on_generate(self) -> None:
-        if self.gen.loaded is False:
-            messagebox.showinfo(APP_NAME, "请先加载模型。")
+        if not self.gen.loaded:
+            messagebox.showinfo(APP_NAME, "请先加载模型（模型放入 models 文件夹后在下拉框选择）。")
             return
-        prompt = self.txt_prompt.get("1.0", END).strip()
+        prompt = self.txt_prompt.get("1.0", "end").strip()
         if not prompt:
             messagebox.showinfo(APP_NAME, "请输入提示词（可在 Tag 库双击插入）。")
             return
-        neg = self.txt_neg.get("1.0", END).strip()
+        neg = self.txt_neg.get("1.0", "end").strip()
         seed = int(self.var_seed.get())
         self.q.put(("busy", True))
         self._status("生成中…")
@@ -521,95 +603,10 @@ class App(tk.Tk):
             f"{APP_NAME} · {APP_NAME_ZH}\n"
             f"版本: {VERSION}\n\n"
             f"作者: {AUTHOR}\n邮箱: {AUTHOR_EMAIL}\n\n"
-            "本地 Qwen-Image 生图工作台\n"
-            "无需手动配置环境，从 HuggingFace 一键下载模型。\n"
+            "本地生图工作台（Qwen-Image 系 / SDXL 系）\n"
+            "模型请自行从 HuggingFace 下载后放入模型文件夹。\n"
             "内置中文 Tag 库，双击即可插入提示词。",
         )
-
-
-# ------------------------------------------------------------------ 模型管理对话框
-class ModelsDialog(tk.Toplevel):
-    def __init__(self, master: "App") -> None:
-        super().__init__(master)
-        self.title("模型管理")
-        self.geometry("720x480")
-        self.configure(bg=PALETTE["bg"])
-        self.transient(master)
-        self.grab_set()
-
-        ttk.Label(self, text="推荐模型（HuggingFace）", style="Title.TLabel").pack(anchor="w", padx=14, pady=(14, 4))
-        cols = ("name", "id", "size", "note")
-        treef = ttk.Frame(self, style="TFrame")
-        treef.pack(fill=BOTH, expand=True, padx=14)
-        self.tree = ttk.Treeview(treef, columns=cols, show="headings")
-        for cid, text, w in (("name", "名称", 200), ("id", "仓库 ID", 230), ("size", "体积", 130), ("note", "说明", 130)):
-            self.tree.heading(cid, text=text)
-            self.tree.column(cid, width=w, anchor="w")
-        vsb = ttk.Scrollbar(treef, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
-        vsb.pack(side=RIGHT, fill=Y)
-        for m in engine.BUILTIN_MODELS:
-            self.tree.insert("", END, iid=m["id"], values=(m["name"], m["id"], m["size"], m["note"]))
-
-        self.var_custom = tk.StringVar()
-        crow = ttk.Frame(self, style="TFrame")
-        crow.pack(fill=X, padx=14, pady=8)
-        ttk.Label(crow, text="自定义仓库 ID:", style="Sub.TLabel").pack(side=LEFT)
-        ttk.Entry(crow, textvariable=self.var_custom, width=34).pack(side=LEFT, padx=6)
-
-        frow = ttk.Frame(self, style="TFrame")
-        frow.pack(fill=X, padx=14)
-        ttk.Label(frow, text="仅下载单个文件:", style="Sub.TLabel").pack(side=LEFT)
-        self.var_file = tk.StringVar()
-        ttk.Entry(frow, textvariable=self.var_file, width=48).pack(side=LEFT, padx=6)
-        ttk.Label(frow, text="（可选，如 WAI-xxx.safetensors；留空下载整个仓库）", style="Sub.TLabel").pack(side=LEFT)
-
-        self.progress = ttk.Progressbar(self, maximum=100, value=0)
-        self.progress.pack(fill=X, padx=14)
-        self.lbl_dl = ttk.Label(self, text="下载进度实时显示在主窗口「下载 / 设置」页。", style="Sub.TLabel")
-        self.lbl_dl.pack(anchor="w", padx=14)
-
-        brow = ttk.Frame(self, style="TFrame")
-        brow.pack(fill=X, padx=14, pady=(4, 14))
-        self.btn_dl = ttk.Button(brow, text="下载选中模型", style="Accent.TButton", command=self._on_download)
-        self.btn_dl.pack(side=LEFT)
-        ttk.Button(brow, text="打开本地模型目录", command=self._open_dir).pack(side=LEFT, padx=8)
-        ttk.Button(brow, text="刷新本地模型列表", command=self._refresh).pack(side=LEFT)
-        ttk.Label(brow, text="已下载模型保存在用户数据目录，升级重装不丢失。", style="Sub.TLabel").pack(side=RIGHT)
-
-        self._refresh()
-
-    def _refresh(self) -> None:
-        try:
-            app = self.master  # 顶层 App
-            if hasattr(app, "cmb_model"):
-                local = engine.list_local_models()
-                app.cmb_model["values"] = local  # type: ignore[attr-defined]
-                if local:
-                    app.cmb_model.current(0)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    def _open_dir(self) -> None:
-        try:
-            os.startfile(engine.models_dir())  # type: ignore[attr-defined]
-        except Exception:
-            self.lbl_dl.configure(text=f"模型目录: {engine.models_dir()}")
-
-    def _on_download(self) -> None:
-        repo = self.var_custom.get().strip() or (self.tree.selection()[0] if self.tree.selection() else "")
-        if not repo:
-            self.lbl_dl.configure(text="请先在列表选择模型，或填写自定义仓库 ID")
-            return
-        if engine.download_state()["running"]:
-            self.lbl_dl.configure(text=f"已有下载任务进行中: {engine.download_state()['repo']}")
-            return
-        filename = self.var_file.get().strip() or None
-        app = self.master  # type: ignore[assignment]
-        app.start_download(repo, filename)  # type: ignore[attr-defined]
-        label = f"{repo} [{filename}]" if filename else repo
-        self.lbl_dl.configure(text=f"已开始下载: {label}（进度见主窗口「下载 / 设置」页）")
 
 
 def main() -> None:

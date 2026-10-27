@@ -49,6 +49,11 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 [Files]
 Source: "dist\QwenImageStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs replacesameversion
 
+[Dirs]
+; 内置模型文件夹：用户手动放入下载好的模型；升级覆盖与卸载都不删除
+Name: "{app}\models\QwenImage"; Flags: uninsneveruninstall
+Name: "{app}\models\SDXL"; Flags: uninsneveruninstall
+
 [Icons]
 Name: "{group}\{#MyAppNameZh}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\卸载 {#MyAppNameZh}"; Filename: "{uninstallexe}"
