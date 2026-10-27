@@ -227,6 +227,36 @@ def set_active_model(entry: dict) -> None:
     save_state(st)
 
 
+# ---------------------------------------------------------------- LoRA
+
+
+def lora_root() -> str:
+    d = os.path.join(install_dir(), "models", "LoRA")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def scan_loras() -> List[dict]:
+    """扫描 LoRA 文件（models\\LoRA 及自定义文件夹，一层）."""
+    roots = [lora_root()] + custom_model_dirs()
+    out: List[dict] = []
+    seen = set()
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for entry in os.scandir(root):
+            if entry.is_file() and entry.name.lower().endswith(".safetensors"):
+                if entry.path not in seen:
+                    seen.add(entry.path)
+                    out.append({"name": os.path.splitext(entry.name)[0], "path": entry.path})
+            elif entry.is_dir():
+                w = _largest_weight(entry.path, depth=1)
+                if w and w not in seen:
+                    seen.add(w)
+                    out.append({"name": entry.name, "path": w})
+    return out
+
+
 # ---------------------------------------------------------------- 依赖自检
 
 REQUIRED_PKGS = [
@@ -561,11 +591,57 @@ class Generator:
     def __init__(self) -> None:
         self._pipe = None
         self._path: Optional[str] = None
+        self._lora: Optional[str] = None
         self._lock = threading.Lock()
 
     @property
     def loaded(self) -> bool:
         return self._pipe is not None
+
+    @property
+    def lora_path(self) -> Optional[str]:
+        return self._lora
+
+    def load_lora(self, lora_path: str, scale: float, log: Callable[[str], None]) -> bool:
+        """向当前管线挂载 LoRA（SDXL / Qwen-Image 管线通用 best-effort）."""
+        with self._lock:
+            if self._pipe is None:
+                log("模型未加载，请先加载主模型")
+                return False
+            try:
+                try:
+                    self._pipe.unload_lora_weights()  # 卸载旧 LoRA
+                except Exception:
+                    pass
+                self._pipe.load_lora_weights(lora_path)
+                try:
+                    active = self._pipe.get_active_adapters()  # type: ignore[attr-defined]
+                    if active:
+                        self._pipe.set_adapters(active, adapter_weights=[scale] * len(active))
+                except Exception:
+                    # 部分管线不支持动态强度，回退为融合方式（强度固定）
+                    self._pipe.fuse_lora(lora_scale=scale)  # type: ignore[attr-defined]
+                    log("当前管线不支持动态强度，LoRA 已按固定强度融合")
+                self._lora = lora_path
+                log(f"LoRA 已挂载: {os.path.basename(lora_path)}（强度 {scale:.2f}）")
+                return True
+            except Exception as e:
+                self._lora = None
+                log(f"LoRA 挂载失败: {e}")
+                return False
+
+    def unload_lora(self, log: Callable[[str], None]) -> bool:
+        with self._lock:
+            if self._pipe is None:
+                return False
+            try:
+                self._pipe.unload_lora_weights()
+                self._lora = None
+                log("LoRA 已卸载")
+                return True
+            except Exception as e:
+                log(f"LoRA 卸载失败: {e}")
+                return False
 
     def load(self, model_path: str, log: Callable[[str], None]) -> bool:
         """按本地路径加载模型（文件或目录）."""
@@ -609,6 +685,7 @@ class Generator:
                     pipe.enable_attention_slicing()
                 self._pipe = pipe
                 self._path = model_path
+                self._lora = None  # 新管线需重新挂载 LoRA
                 log("模型加载完成")
                 low = name.lower()
                 if "lightning" in low:

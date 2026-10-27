@@ -9,6 +9,8 @@
 - **零依赖门槛**：安装即用，AI 依赖（PyTorch / diffusers 等）由软件按需自动安装，设置页实时显示进度；已装则显示「已安装 ✓」（pip 国内镜像表自动切换 + 系统代理自动探测）
 - **模型自管，不被升级覆盖**：从 HuggingFace 自行下载模型，放入安装目录 `models\QwenImage` 或 `models\SDXL`（也可在设置里添加任意自定义模型文件夹），软件自动扫描
 - **双系列支持**：Qwen-Image 全量 / GGUF（自动补齐 2.1 或 1.0 基础组件）+ SDXL 系单文件整合包（含 V-Prediction 自动调度）
+- **LoRA 支持**：放入 `models\LoRA` 即在主界面挂载/卸载，强度 0~2 可调
+- **A1111 兼容 API**：设置页可启动后台服务，`POST /sdapi/v1/txt2img` 标准 WebUI API 格式（返回 base64 PNG），第三方客户端/脚本直接调用
 - **设置页手动切换模型系列**，下拉选择模型点「使用」
 - **中文 Tag 库（10 万+ 条）**：内置 [danbooru-tags-data-zh](https://github.com/amenorira/danbooru-tags-data-zh)（MIT）全量中文翻译库（通用/角色/作品/画师/元数据，含 NSFW），中英对照、分类浏览、搜索，双击插入提示词；支持经 GitHub 代理在线更新
 - **升级覆盖安装**：AI 依赖装在 `%LOCALAPPDATA%\DrawCase\runtime`、模型在安装目录 `models\`（卸载标志 neveruninstall）、配置在 `%LOCALAPPDATA%\DrawCase`，升级重装全部保留
@@ -20,7 +22,7 @@
 2. 启动 → 软件自动安装 AI 依赖（「设置」页有进度条；已安装则显示「已安装 ✓」）
 3. 从 HuggingFace 下载模型，放入安装目录 `models\QwenImage`（Qwen-Image 系）或 `models\SDXL`（SDXL 系单文件整合包）；或在「设置」页添加自定义模型文件夹
 4. 「设置」页选择模型系列 → 下拉选择模型 → 点「使用」→ 顶部「加载模型」
-5. 在 Tag 库双击中文标签组好提示词 → 「开始生成」
+5. 在 Tag 库双击中文标签组好提示词 → 「开始生成」（可选：LoRA 行挂载 LoRA；设置页启用 API 供外部程序调用）
 
 ## 构建（开发者）
 
@@ -40,7 +42,8 @@ ISCC.exe installer\DrawCase.iss
 
 ```
 src/drawcase/
-  engine.py        # 依赖自检（进度/镜像/代理）/ 本地模型扫描 / diffusers 生成
+  engine.py        # 依赖自检（进度/镜像/代理）/ 本地模型与 LoRA 扫描 / diffusers 生成
+  api_server.py    # A1111 兼容 txt2img 后台 API
   taglib.py        # 中文 Tag 库（打包 tags.json + 远程更新 + 用户 csv）
   ui.py            # 主界面（ttkbootstrap，纯 ttk 深色回退）
   version_info.py  # 版本与作者信息
@@ -53,3 +56,4 @@ installer/         # Inno Setup 脚本（升级覆盖安装，内置 models 模�
 ## License
 
 见 [LICENSE](LICENSE)。
+

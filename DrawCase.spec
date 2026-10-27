@@ -18,6 +18,7 @@ hidden = (
     + [
         "drawcase.taglib",
         "drawcase.engine",
+        "drawcase.api_server",
         "drawcase.ui",
         "drawcase.version_info",
     ]

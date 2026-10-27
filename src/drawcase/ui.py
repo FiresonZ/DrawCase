@@ -122,6 +122,27 @@ class App(tk.Tk):
         ttk.Label(row, text="（模型请放入安装目录 models 文件夹或设置里的自定义文件夹）",
                   style="Sub.TLabel").pack(side=LEFT, padx=(0, 10))
 
+        # LoRA 行
+        lrow = ttk.Frame(self, style="TFrame", padding=(14, 4, 14, 0))
+        lrow.pack(fill=X)
+        ttk.Label(lrow, text="LoRA", style="Sub.TLabel").pack(side=LEFT, padx=(0, 6))
+        self.cmb_lora = ttk.Combobox(lrow, state="readonly", width=32)
+        self.cmb_lora.pack(side=LEFT)
+        self._lora_map: dict = {}
+        ttk.Button(lrow, text="刷新", width=5, command=self._refresh_loras).pack(side=LEFT, padx=(6, 0))
+        ttk.Label(lrow, text="强度", style="Sub.TLabel").pack(side=LEFT, padx=(12, 4))
+        self.var_lora_scale = tk.DoubleVar(value=0.8)
+        ttk.Scale(lrow, from_=0.0, to=2.0, variable=self.var_lora_scale, length=120).pack(side=LEFT)
+        self.lbl_lora_scale = ttk.Label(lrow, text="0.80", style="Sub.TLabel")
+        self.lbl_lora_scale.pack(side=LEFT, padx=(4, 0))
+        self.var_lora_scale.trace_add("write", lambda *a: self.lbl_lora_scale.configure(text=f"{self.var_lora_scale.get():.2f}"))
+        ttk.Button(lrow, text="挂载", style="Accent.TButton", width=6, command=self._on_mount_lora).pack(side=LEFT, padx=(12, 0))
+        ttk.Button(lrow, text="卸载", width=6, command=self._on_unmount_lora).pack(side=LEFT, padx=(6, 0))
+        self.lbl_lora_state = ttk.Label(lrow, text="未挂载", style="Sub.TLabel")
+        self.lbl_lora_state.pack(side=LEFT, padx=10)
+        ttk.Label(lrow, text="（LoRA 文件放入安装目录 models\\LoRA，支持 SDXL 系与 Qwen-Image 系）",
+                  style="Sub.TLabel").pack(side=LEFT)
+
     def _build_body(self) -> None:
         body = ttk.Frame(self, style="TFrame")
         body.pack(fill=BOTH, expand=True, padx=14, pady=10)
@@ -205,6 +226,23 @@ class App(tk.Tk):
                             command=self._apply_mirror).pack(side=LEFT, padx=(8, 0))
         ttk.Label(tab_set, text="镜像源用于 GGUF 模型首次加载时自动补齐官方基础组件（文本编码器/VAE）。",
                   style="Sub.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(6, 0))
+
+        # API 服务
+        acard = ttk.Labelframe(tab_set, text=" 后台 API 服务（A1111 兼容 /sdapi/v1/txt2img） ", style="Card.TLabelframe", padding=8)
+        acard.pack(fill=X, pady=(10, 0))
+        arow = ttk.Frame(acard, style="Panel.TFrame")
+        arow.pack(fill=X)
+        self.var_api_on = tk.BooleanVar(value=False)
+        ttk.Checkbutton(arow, text="启用", variable=self.var_api_on,
+                        command=self._on_api_toggle).pack(side=LEFT)
+        ttk.Label(arow, text="端口:", style="Panel.Sub.TLabel").pack(side=LEFT, padx=(12, 4))
+        self.var_api_port = tk.IntVar(value=7861)
+        ttk.Spinbox(arow, from_=1024, to=65535, textvariable=self.var_api_port, width=7).pack(side=LEFT)
+        self.lbl_api = ttk.Label(arow, text="未启动", style="Panel.Sub.TLabel")
+        self.lbl_api.pack(side=LEFT, padx=12)
+        ttk.Label(acard, text="启动后其他程序可通过 http://127.0.0.1:<端口>/sdapi/v1/txt2img 以标准\n"
+                              "A1111 API 格式调用本软件生成（返回 base64 PNG），与主界面共用模型。",
+                  style="Panel.Sub.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(4, 0))
 
         # --- tag 库 ---
         tag_card = ttk.Labelframe(left, text=" 中文 Tag 库（点击插入 / 右键追加负面） ", style="Card.TLabelframe", padding=10)
@@ -344,11 +382,21 @@ class App(tk.Tk):
                     self.cmb_cat["values"] = ["全部"] + taglib.categories()
                     self.btn_tagupd.configure(state="normal")
                     self._log("Tag 库列表已刷新")
+                elif kind == "lora":
+                    ok, name = val
+                    if name is None:
+                        self.lbl_lora_state.configure(text="未挂载", foreground=PALETTE["sub"])
+                    else:
+                        self.lbl_lora_state.configure(text=f"已挂载: {name}" if ok else "挂载失败",
+                                                      foreground=PALETTE["ok"] if ok else PALETTE["err"])
                 elif kind == "model_loaded":
                     ok = bool(val)
                     self.lbl_model_state.configure(text="已加载" if ok else "加载失败",
                                                    foreground=PALETTE["ok"] if ok else PALETTE["err"])
                     self.btn_load.configure(state="normal")
+                    if ok:
+                        self.lbl_lora_state.configure(text="未挂载（模型已重载）", foreground=PALETTE["sub"])
+                    self._refresh_loras()
                 elif kind == "busy":
                     self._busy = bool(val)
                     self.btn_gen.configure(state="disabled" if self._busy else "normal")
@@ -362,6 +410,7 @@ class App(tk.Tk):
         self._refresh_model_combo()
         self._refresh_set_model_combo()
         self._refresh_dirs()
+        self._refresh_loras()
         self._log(f"{APP_NAME} v{VERSION}  作者: {AUTHOR} <{AUTHOR_EMAIL}>")
         self._log("首次使用：软件正在自动安装 AI 依赖（详见「设置」页进度），"
                   "然后把下载好的模型放入安装目录 models 文件夹。")
@@ -495,6 +544,57 @@ class App(tk.Tk):
         val = self.var_mirror.get()
         engine.set_hf_endpoint(engine.HF_MIRROR if val == "国内镜像" else engine.HF_OFFICIAL)
         self._log(f"已切换 HuggingFace 源: {'hf-mirror.com（国内镜像）' if val == '国内镜像' else '官方 huggingface.co'}")
+
+    # ------------------------------------------------------------ LoRA
+    def _refresh_loras(self) -> None:
+        loras = engine.scan_loras()
+        self._lora_map = {l["name"]: l for l in loras}
+        names = list(self._lora_map.keys())
+        self.cmb_lora["values"] = names
+        if names and not self.cmb_lora.get():
+            self.cmb_lora.current(0)
+        elif not names:
+            self.cmb_lora.set("")
+
+    def _on_mount_lora(self) -> None:
+        name = self.cmb_lora.get()
+        entry = self._lora_map.get(name)
+        if not entry:
+            messagebox.showinfo(APP_NAME, "没有可选 LoRA，请把 .safetensors 放入 models\\LoRA 后点「刷新」。")
+            return
+        path = entry["path"]
+        scale = float(self.var_lora_scale.get())
+        self.lbl_lora_state.configure(text="挂载中…", foreground=PALETTE["warn"])
+
+        def work() -> None:
+            ok = self.gen.load_lora(path, scale, self._log)
+            self.q.put(("lora", (ok, name)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_unmount_lora(self) -> None:
+        def work() -> None:
+            ok = self.gen.unload_lora(self._log)
+            self.q.put(("lora", (ok, None)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ API
+    def _on_api_toggle(self) -> None:
+        if self.var_api_on.get():
+            try:
+                port = int(self.var_api_port.get())
+            except Exception:
+                port = 7861
+            ok = engine.start_api(port, self.gen.generate, lambda: self.gen.loaded, self._log)
+            if ok:
+                self.lbl_api.configure(text=f"运行中 :{port}", foreground=PALETTE["ok"])
+            else:
+                self.var_api_on.set(False)
+                self.lbl_api.configure(text="启动失败", foreground=PALETTE["err"])
+        else:
+            engine.stop_api(self._log)
+            self.lbl_api.configure(text="未启动", foreground=PALETTE["sub"])
 
     # ------------------------------------------------------------ tag
     def _on_update_tags(self) -> None:

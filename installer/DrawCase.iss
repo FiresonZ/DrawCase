@@ -53,6 +53,7 @@ Source: "..\dist\DrawCase\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 ; 内置模型文件夹：用户手动放入下载好的模型；升级覆盖与卸载都不删除
 Name: "{app}\models\QwenImage"; Flags: uninsneveruninstall
 Name: "{app}\models\SDXL"; Flags: uninsneveruninstall
+Name: "{app}\models\LoRA"; Flags: uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
