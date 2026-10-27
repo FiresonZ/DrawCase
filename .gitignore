@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+installer/dist/
+
+# 运行产物
+*.log
+tags_extra.csv
+
+# IDE
+.idea/
+.vscode/
