@@ -342,9 +342,9 @@ class App(tk.Tk):
             msg = "✗ " + msg
         self.lbl_dl_msg.configure(text=msg)
 
-    def start_download(self, repo: str) -> None:
+    def start_download(self, repo: str, filename: Optional[str] = None) -> None:
         """由「模型管理」触发，进度显示在「下载 / 设置」页."""
-        engine.start_download(repo, self._log, lambda st: self.q.put(("download", st)))
+        engine.start_download(repo, self._log, lambda st: self.q.put(("download", st)), filename=filename)
 
     def _on_first_run(self) -> None:
         engine.apply_saved_endpoint()  # 在任何 huggingface_hub 导入前恢复镜像设置
@@ -558,6 +558,13 @@ class ModelsDialog(tk.Toplevel):
         ttk.Label(crow, text="自定义仓库 ID:", style="Sub.TLabel").pack(side=LEFT)
         ttk.Entry(crow, textvariable=self.var_custom, width=34).pack(side=LEFT, padx=6)
 
+        frow = ttk.Frame(self, style="TFrame")
+        frow.pack(fill=X, padx=14)
+        ttk.Label(frow, text="仅下载单个文件:", style="Sub.TLabel").pack(side=LEFT)
+        self.var_file = tk.StringVar()
+        ttk.Entry(frow, textvariable=self.var_file, width=48).pack(side=LEFT, padx=6)
+        ttk.Label(frow, text="（可选，如 WAI-xxx.safetensors；留空下载整个仓库）", style="Sub.TLabel").pack(side=LEFT)
+
         self.progress = ttk.Progressbar(self, maximum=100, value=0)
         self.progress.pack(fill=X, padx=14)
         self.lbl_dl = ttk.Label(self, text="下载进度实时显示在主窗口「下载 / 设置」页。", style="Sub.TLabel")
@@ -598,9 +605,11 @@ class ModelsDialog(tk.Toplevel):
         if engine.download_state()["running"]:
             self.lbl_dl.configure(text=f"已有下载任务进行中: {engine.download_state()['repo']}")
             return
+        filename = self.var_file.get().strip() or None
         app = self.master  # type: ignore[assignment]
-        app.start_download(repo)  # type: ignore[attr-defined]
-        self.lbl_dl.configure(text=f"已开始下载: {repo}（进度见主窗口「下载 / 设置」页）")
+        app.start_download(repo, filename)  # type: ignore[attr-defined]
+        label = f"{repo} [{filename}]" if filename else repo
+        self.lbl_dl.configure(text=f"已开始下载: {label}（进度见主窗口「下载 / 设置」页）")
 
 
 def main() -> None:

@@ -43,6 +43,13 @@ BUILTIN_MODELS = [
         "note": "8 步蒸馏加速；首次加载自动补齐 2.1 基础组件（文本编码器/VAE）",
     },
     {
+        "id": "ShinoharaHare/WAI-NSFW-illustrious-SDXL-V14.0-V-Prediction",
+        "name": "WAI illustrious V14 V-Pred (SDXL 动漫系)",
+        "type": "single-file",
+        "size": "单文件约 5.1GB",
+        "note": "SDXL 系；可只下载仓库中最大的单文件 safetensors（含全部组件）",
+    },
+    {
         "id": "cercina/qwen-image-gguf",
         "name": "Qwen-Image GGUF (量化版)",
         "type": "gguf",
@@ -274,8 +281,13 @@ def _fmt_bytes(n: float) -> str:
     return f"{n:.1f}TB"
 
 
-def start_download(repo_id: str, log: Callable[[str], None], on_update: Callable[[dict], None]) -> None:
-    """启动后台下载（非阻塞）。进度通过 on_update({repo,pct,speed,msg,running,ok}) 推送."""
+def start_download(
+    repo_id: str,
+    log: Callable[[str], None],
+    on_update: Callable[[dict], None],
+    filename: Optional[str] = None,
+) -> None:
+    """启动后台下载（非阻塞）。filename 指定时只下载该单文件。进度通过 on_update 推送."""
 
     if _dl_state["running"]:
         log(f"已有下载任务进行中: {_dl_state['repo']}，请等待完成")
@@ -289,39 +301,54 @@ def start_download(repo_id: str, log: Callable[[str], None], on_update: Callable
     local = os.path.join(models_dir(), repo_id.replace("/", "__"))
     os.makedirs(local, exist_ok=True)
     stop = {"flag": False}
+    target_file = filename  # 单文件下载目标（用于进度计算）
 
     def watcher(total: int) -> None:
         prev = 0
-        while not stop["flag"] and _dl_state["running"]:
-            cur = 0
+        # 单文件下载时只统计目标文件本身（含 .incomplete 临时文件）
+        def walk_files():
             for root, _, fs in os.walk(local):
                 for fn in fs:
-                    try:
-                        cur += os.path.getsize(os.path.join(root, fn))
-                    except OSError:
-                        pass
+                    yield os.path.join(root, fn)
+
+        while not stop["flag"] and _dl_state["running"]:
+            cur = 0
+            for fp in walk_files():
+                base = os.path.basename(fp)
+                if target_file and base != target_file and not base.endswith(".incomplete"):
+                    continue
+                try:
+                    cur += os.path.getsize(fp)
+                except OSError:
+                    pass
             pct = min(0.99, cur / total) if total > 0 else 0.0
             push(pct=pct, speed=cur - prev, msg=f"{_fmt_bytes(cur)} / {_fmt_bytes(total)}")
             prev = cur
             time.sleep(1)
 
     def run() -> None:
+        label = f"{repo_id} [{filename}]" if filename else repo_id
         push(repo=repo_id, running=True, ok=None, pct=0.0, speed=0, msg="准备下载…")
-        log(f"开始下载: {repo_id}（支持断点续传）")
+        log(f"开始下载: {label}（支持断点续传）")
         try:
-            from huggingface_hub import HfApi, snapshot_download
+            from huggingface_hub import HfApi, hf_hub_download, snapshot_download
 
             total = 0
             try:
                 info = HfApi().model_info(repo_id, files_metadata=True)
-                total = sum((f.size or 0) for f in (info.siblings or []))
+                for f in (info.siblings or []):
+                    if filename is None or f.rfilename == filename:
+                        total += (f.size or 0)
             except Exception:
                 pass
             t = threading.Thread(target=watcher, args=(total,), daemon=True)
             t.start()
-            snapshot_download(repo_id=repo_id, local_dir=local, max_workers=4)
+            if filename:
+                hf_hub_download(repo_id=repo_id, filename=filename, local_dir=local)
+            else:
+                snapshot_download(repo_id=repo_id, local_dir=local, max_workers=4)
             push(running=False, ok=True, pct=1.0, speed=0, msg="下载完成")
-            log(f"模型下载完成: {repo_id}")
+            log(f"下载完成: {label}")
         except Exception as e:
             push(running=False, ok=False, speed=0, msg=f"下载失败: {e}")
             log(f"下载失败: {e}")
@@ -358,6 +385,32 @@ def get_model_files(repo_id: str) -> List[str]:
 # ---------------------------------------------------------------- 生成
 
 
+def _load_single_file_pipe(fpath: str, dtype: object, log: Callable[[str], None]) -> object:
+    """加载单文件整合模型（SDXL / SD1.x / SD2.x）."""
+    from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline  # type: ignore
+
+    name = os.path.basename(fpath).lower()
+    try:
+        log("单文件整合模型，按 SDXL 管线加载…")
+        pipe = StableDiffusionXLPipeline.from_single_file(fpath, torch_dtype=dtype)
+    except Exception as e:
+        log(f"SDXL 管线加载失败（{e}），回退通用 SD 管线…")
+        pipe = StableDiffusionPipeline.from_single_file(fpath, torch_dtype=dtype)
+    if "v-pred" in name or "v_prediction" in name:
+        try:
+            from diffusers import EulerDiscreteScheduler  # type: ignore
+
+            pipe.scheduler = EulerDiscreteScheduler.from_config(
+                pipe.scheduler.config,
+                prediction_type="v_prediction",
+                rescale_betas_zero_snr=True,
+            )
+            log("已启用 V-Prediction 调度（建议 CFG 1.5~2.5、步数 20~30）")
+        except Exception as e:
+            log(f"V-Prediction 配置失败: {e}")
+    return pipe
+
+
 class Generator:
     """对 diffusers 管线的轻封装：懒加载、线程内生成."""
 
@@ -389,6 +442,14 @@ class Generator:
                 dev = torch_device()
                 log(f"加载模型: {path} (设备: {dev})")
                 dtype = torch.float16 if dev == "cuda" else torch.float32
+                has_index = os.path.isfile(os.path.join(local, "model_index.json"))
+
+                # 未指定权重且仓库无 diffusers 结构时，自动选最大的整合单文件
+                if not weight and not has_index and os.path.isdir(local):
+                    cands = [f for f in get_model_files(repo_id) if "/" not in f]
+                    if cands:
+                        weight = max(cands, key=lambda f: os.path.getsize(os.path.join(local, f)))
+                        log(f"自动选择整合文件: {weight}")
 
                 # GGUF 权重：单独加载 transformer，再挂到对应版本的基础管线
                 if weight and weight.endswith(".gguf"):
@@ -423,10 +484,14 @@ class Generator:
                         torch_dtype=torch.bfloat16 if dev == "cuda" else torch.float32,
                     )
                 else:
-                    pipe = DiffusionPipeline.from_pretrained(
-                        path,
-                        torch_dtype=dtype,
-                    )
+                    # 顶层单文件整合（.safetensors 无子目录路径）→ 单文件加载
+                    if weight and "/" not in weight and weight.endswith(".safetensors") and os.path.isfile(os.path.join(local, weight)):
+                        pipe = _load_single_file_pipe(os.path.join(local, weight), dtype, log)
+                    else:
+                        pipe = DiffusionPipeline.from_pretrained(
+                            path,
+                            torch_dtype=dtype,
+                        )
                 pipe.to(dev)
                 if dev == "cuda":
                     pipe.enable_attention_slicing()
@@ -438,6 +503,8 @@ class Generator:
                     log("提示: Lightning 加速模型建议使用 步数=4、CFG=1.0")
                 if "turbo" in repo_id.lower():
                     log("提示: Turbo 蒸馏模型建议使用 步数=8、CFG=1.0")
+                if "v-pred" in repo_id.lower() or "v_prediction" in repo_id.lower():
+                    log("提示: V-Prediction 模型建议使用 CFG 1.5~2.5、步数 20~30")
                 return True
             except Exception as e:
                 log(f"模型加载失败: {e}")
