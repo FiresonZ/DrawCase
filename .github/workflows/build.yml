@@ -43,6 +43,20 @@ jobs:
             -replace '__version__ = ".*"', "__version__ = `"$v`"" |
             Set-Content src/qwen_image_studio/__init__.py
 
+      - name: Sync version into exe version resource
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.inputs.version }}"
+          $parts = $v.Split('.')
+          while ($parts.Count -lt 3) { $parts += "0" }
+          $tuple = "($($parts[0]), $($parts[1]), $($parts[2]), 0)"
+          $p = "assets/version_info.txt"
+          $c = (Get-Content $p -Raw)
+          $c = $c -replace [regex]::Escape("(0, 1, 0, 0)"), $tuple
+          $c = $c -replace [regex]::Escape("'0.1.0"), "'$v"
+          Set-Content $p $c
+          Get-Content $p | Select-String "vers"
+
       - name: Install build deps
         run: |
           python -m pip install --upgrade pip

@@ -1,11 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec：QwenImageStudio（onedir，轻量，GUI 基础依赖）."""
 
+import os
 import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
+
+_icon = os.path.join("assets", "icon.ico")
+_vinfo = os.path.join("assets", "version_info.txt")
+_win_only = sys.platform.startswith("win")
 
 hidden = (
     collect_submodules("ttkbootstrap")
@@ -46,8 +51,8 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon="assets/icon.ico" if sys.platform.startswith("win") else None,
-    version="assets/version_info.txt" if sys.platform.startswith("win") else None,
+    icon=_icon if _win_only and os.path.exists(_icon) else None,
+    version=_vinfo if _win_only and os.path.exists(_vinfo) else None,
 )
 coll = COLLECT(
     exe,

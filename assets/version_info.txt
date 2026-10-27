@@ -1,28 +1,35 @@
-// QwenImageStudio 版本资源（Windows exe 属性面板显示）
-// 由 CI 预处理 VERSION 占位符
+# QwenImageStudio 版本资源（PyInstaller VSVersionInfo 格式）
+# CI 会按 workflow 输入的版本号替换 filevers/prodvers 与 FileVersion/ProductVersion 字符串
 
-1 VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
-FILEOS 0x40004L
-FILETYPE 0x1L
-BEGIN
-  BLOCK "StringFileInfo"
-  BEGIN
-    BLOCK "080404b0"
-    BEGIN
-      VALUE "CompanyName", "FiresonZ"
-      VALUE "FileDescription", "QwenImageStudio - 本地 Qwen-Image 生图工作台"
-      VALUE "FileVersion", "0.1.0"
-      VALUE "InternalName", "QwenImageStudio"
-      VALUE "LegalCopyright", "Copyright (C) 2026 FiresonZ <dev@gith.uk>"
-      VALUE "OriginalFilename", "QwenImageStudio.exe"
-      VALUE "ProductName", "QwenImageStudio"
-      VALUE "ProductVersion", "0.1.0"
-    END
-  END
-  BLOCK "VarFileInfo"
-  BEGIN
-    VALUE "Translation", 0x0804, 1200
-  END
-END
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          "080404b0",
+          [
+            StringStruct("CompanyName", "FiresonZ"),
+            StringStruct("FileDescription", "DrawCase - 本地 AI 生图工作台（Qwen-Image / SDXL）"),
+            StringStruct("FileVersion", "0.1.0"),
+            StringStruct("InternalName", "QwenImageStudio"),
+            StringStruct("LegalCopyright", "Copyright (C) 2026 FiresonZ <dev@gith.uk>"),
+            StringStruct("OriginalFilename", "QwenImageStudio.exe"),
+            StringStruct("ProductName", "QwenImageStudio"),
+            StringStruct("ProductVersion", "0.1.0"),
+          ],
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct("Translation", [2052, 1200])]),
+  ],
+)

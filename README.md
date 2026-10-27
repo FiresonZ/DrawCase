@@ -16,7 +16,7 @@
 
 ## 使用
 
-1. 下载 [Releases](https://github.com/FiresonZ/QwenImageStudio/releases) 中的 `QwenImageStudio-Setup-x.x.x.exe`，安装（支持直接覆盖升级旧版）
+1. 下载 [Releases](https://github.com/FiresonZ/DrawCase/releases) 中的 `QwenImageStudio-Setup-x.x.x.exe`，安装（支持直接覆盖升级旧版）
 2. 启动 → 软件自动安装 AI 依赖（「设置」页有进度条；已安装则显示「已安装 ✓」）
 3. 从 HuggingFace 下载模型，放入安装目录 `models\QwenImage`（Qwen-Image 系）或 `models\SDXL`（SDXL 系单文件整合包）；或在「设置」页添加自定义模型文件夹
 4. 「设置」页选择模型系列 → 下拉选择模型 → 点「使用」→ 顶部「加载模型」
