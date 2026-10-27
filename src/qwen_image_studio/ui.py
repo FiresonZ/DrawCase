@@ -60,6 +60,8 @@ def _dark_style(style: ttk.Style) -> None:
     style.configure("Danger.TButton", background=PALETTE["err"], foreground="#ffffff")
     style.map("Danger.TButton", background=[("active", "#e05555")])
     style.configure("TEntry", fieldbackground=PALETTE["panel2"], foreground=PALETTE["fg"], insertcolor=PALETTE["fg"], borderwidth=0)
+    style.configure("TRadiobutton", background=PALETTE["bg"], foreground=PALETTE["fg"], focusthickness=0)
+    style.map("TRadiobutton", background=[("active", PALETTE["bg"])])
     style.configure("TCombobox", fieldbackground=PALETTE["panel2"], foreground=PALETTE["fg"], arrowcolor=PALETTE["fg"], borderwidth=0)
     style.map("TCombobox", fieldbackground=[("readonly", PALETTE["panel2"])])
     style.configure("Vertical.TScrollbar", background=PALETTE["panel2"], troughcolor=PALETTE["bg"], borderwidth=0)
@@ -81,7 +83,6 @@ class App(tk.Tk):
 
         self.q: "queue.Queue[tuple]" = queue.Queue()
         self.gen = engine.Generator()
-        self.downloader = engine.HFDownloader()
         self._busy = False
         self._preview_path: Optional[str] = None
 
@@ -151,6 +152,35 @@ class App(tk.Tk):
                                font=("Microsoft YaHei UI", 10))
         self.txt_neg.pack(fill=X)
         self.txt_neg.insert("1.0", "low quality, worst quality, blurry, watermark, text, bad hands")
+
+        # --- 下载 / 设置 ---
+        tab_dl = ttk.Frame(nb, style="TFrame", padding=(6, 8))
+        nb.add(tab_dl, text="下载 / 设置")
+
+        srow = ttk.Frame(tab_dl, style="TFrame")
+        srow.pack(fill=X)
+        ttk.Label(srow, text="HuggingFace 源:", style="Sub.TLabel").pack(side=LEFT)
+        self.var_mirror = tk.StringVar(value="国内镜像" if engine.get_hf_endpoint() else "官方源")
+        for text, val in (("官方源", "官方源"), ("国内镜像 hf-mirror.com", "国内镜像")):
+            rb = ttk.Radiobutton(srow, text=text, value=val, variable=self.var_mirror,
+                                 command=self._apply_mirror)
+            rb.pack(side=LEFT, padx=(8, 0))
+
+        dcard = ttk.Labelframe(tab_dl, text=" 下载进度 ", style="Card.TLabelframe", padding=10)
+        dcard.pack(fill=X, pady=(10, 0))
+        self.lbl_dl_repo = ttk.Label(dcard, text="无下载任务", style="Panel.Sub.TLabel")
+        self.lbl_dl_repo.pack(anchor="w")
+        self.dl_bar = ttk.Progressbar(dcard, maximum=100, value=0)
+        self.dl_bar.pack(fill=X, pady=6)
+        prow = ttk.Frame(dcard, style="Panel.TFrame")
+        prow.pack(fill=X)
+        self.lbl_dl_speed = ttk.Label(prow, text="", style="Panel.Sub.TLabel")
+        self.lbl_dl_speed.pack(side=LEFT)
+        self.lbl_dl_msg = ttk.Label(prow, text="", style="Panel.Sub.TLabel")
+        self.lbl_dl_msg.pack(side=RIGHT)
+        ttk.Label(tab_dl, text="提示：在「模型管理」中选择仓库点击下载，进度将在此实时显示。\n"
+                               "GGUF 模型首次加载时会自动补齐对应版本的基础组件（文本编码器/VAE）。",
+                  style="Sub.TLabel", wraplength=380, justify="left").pack(anchor="w", pady=(10, 0))
 
         # --- tag 库 ---
         tag_card = ttk.Labelframe(left, text=" 中文 Tag 库（点击插入 / 右键追加负面） ", style="Card.TLabelframe", padding=10)
@@ -277,6 +307,8 @@ class App(tk.Tk):
                     self.progress.configure(value=float(val) * 100)
                 elif kind == "preview":
                     self._show_preview(str(val))
+                elif kind == "download":
+                    self._update_download_panel(dict(val))
                 elif kind == "model_loaded":
                     ok = bool(val)
                     self.lbl_model_state.configure(text="已加载" if ok else "加载失败",
@@ -291,7 +323,31 @@ class App(tk.Tk):
             pass
         self.after(80, self._poll_queue)
 
+    # ---------- 下载 / 镜像 ----------
+    def _apply_mirror(self) -> None:
+        val = self.var_mirror.get()
+        engine.set_hf_endpoint(engine.HF_MIRROR if val == "国内镜像" else engine.HF_OFFICIAL)
+        self._log(f"已切换 HuggingFace 源: {'hf-mirror.com（国内镜像）' if val == '国内镜像' else '官方 huggingface.co'}")
+
+    def _update_download_panel(self, st: dict) -> None:
+        repo = st.get("repo")
+        self.lbl_dl_repo.configure(text=repo or "无下载任务")
+        self.dl_bar.configure(value=float(st.get("pct", 0)) * 100)
+        speed = int(st.get("speed") or 0)
+        self.lbl_dl_speed.configure(text=f"{speed / 1048576:.1f} MB/s" if speed > 0 else "")
+        msg = str(st.get("msg") or "")
+        if st.get("ok") is True:
+            msg = "✓ " + msg
+        elif st.get("ok") is False:
+            msg = "✗ " + msg
+        self.lbl_dl_msg.configure(text=msg)
+
+    def start_download(self, repo: str) -> None:
+        """由「模型管理」触发，进度显示在「下载 / 设置」页."""
+        engine.start_download(repo, self._log, lambda st: self.q.put(("download", st)))
+
     def _on_first_run(self) -> None:
+        engine.apply_saved_endpoint()  # 在任何 huggingface_hub 导入前恢复镜像设置
         self._refresh_model_combo()
         self._log(f"{APP_NAME} v{VERSION}  作者: {AUTHOR} <{AUTHOR_EMAIL}>")
         self._log("提示: 首次使用请先「依赖自检」，再到「模型管理」下载模型。")
@@ -473,16 +529,13 @@ class App(tk.Tk):
 
 # ------------------------------------------------------------------ 模型管理对话框
 class ModelsDialog(tk.Toplevel):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: "App") -> None:
         super().__init__(master)
         self.title("模型管理")
         self.geometry("720x480")
         self.configure(bg=PALETTE["bg"])
         self.transient(master)
         self.grab_set()
-
-        self.dl = engine.HFDownloader()
-        self._downloading = False
 
         ttk.Label(self, text="推荐模型（HuggingFace）", style="Title.TLabel").pack(anchor="w", padx=14, pady=(14, 4))
         cols = ("name", "id", "size", "note")
@@ -507,7 +560,7 @@ class ModelsDialog(tk.Toplevel):
 
         self.progress = ttk.Progressbar(self, maximum=100, value=0)
         self.progress.pack(fill=X, padx=14)
-        self.lbl_dl = ttk.Label(self, text="", style="Sub.TLabel")
+        self.lbl_dl = ttk.Label(self, text="下载进度实时显示在主窗口「下载 / 设置」页。", style="Sub.TLabel")
         self.lbl_dl.pack(anchor="w", padx=14)
 
         brow = ttk.Frame(self, style="TFrame")
@@ -539,26 +592,15 @@ class ModelsDialog(tk.Toplevel):
 
     def _on_download(self) -> None:
         repo = self.var_custom.get().strip() or (self.tree.selection()[0] if self.tree.selection() else "")
-        if not repo or self._downloading:
+        if not repo:
+            self.lbl_dl.configure(text="请先在列表选择模型，或填写自定义仓库 ID")
             return
-        self._downloading = True
-        self.btn_dl.configure(state="disabled")
-        self.lbl_dl.configure(text=f"开始下载: {repo} （支持断点续传，请保持网络畅通）")
-
-        def log(m: str) -> None:
-            self.lbl_dl.configure(text=m)
-
-        def prog(p: float) -> None:
-            self.progress.configure(value=p * 100)
-
-        def work() -> None:
-            ok = self.dl.download(repo, log, prog)
-            self._downloading = False
-            self.btn_dl.configure(state="normal")
-            if ok:
-                self.lbl_dl.configure(text=f"下载完成: {repo}")
-
-        threading.Thread(target=work, daemon=True).start()
+        if engine.download_state()["running"]:
+            self.lbl_dl.configure(text=f"已有下载任务进行中: {engine.download_state()['repo']}")
+            return
+        app = self.master  # type: ignore[assignment]
+        app.start_download(repo)  # type: ignore[attr-defined]
+        self.lbl_dl.configure(text=f"已开始下载: {repo}（进度见主窗口「下载 / 设置」页）")
 
 
 def main() -> None:

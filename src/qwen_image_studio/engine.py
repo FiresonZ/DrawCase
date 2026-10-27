@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from typing import Callable, List, Optional
 
 from .version_info import appdata_dir
@@ -33,6 +34,13 @@ BUILTIN_MODELS = [
         "type": "safetensors",
         "size": "约 40GB (FP16)",
         "note": "蒸馏加速版，4 步出图，速度快",
+    },
+    {
+        "id": "AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF",
+        "name": "Qwen-Image 2.1 Turbo 无审查 GGUF",
+        "type": "gguf",
+        "size": "按量化等级 4~16GB",
+        "note": "8 步蒸馏加速；首次加载自动补齐 2.1 基础组件（文本编码器/VAE）",
     },
     {
         "id": "cercina/qwen-image-gguf",
@@ -69,6 +77,34 @@ def ensure_runtime_path() -> None:
     rd = runtime_dir()
     if rd not in sys.path:
         sys.path.insert(0, rd)
+
+
+# ---------------------------------------------------------------- HF 镜像源
+
+HF_OFFICIAL = ""  # 官方源（默认）
+HF_MIRROR = "https://hf-mirror.com"  # 国内镜像
+
+
+def set_hf_endpoint(url: str) -> None:
+    """切换 HF 站点（""=官方）。必须在首次 import huggingface_hub 前调用；已导入则热替换."""
+    os.environ["HF_ENDPOINT"] = url
+    st = load_state()
+    st["hf_endpoint"] = url
+    save_state(st)
+    try:  # 已导入时热替换常量
+        import huggingface_hub.constants as c  # type: ignore
+
+        c.ENDPOINT = url.rstrip("/") if url else "https://huggingface.co"
+    except Exception:
+        pass
+
+
+def get_hf_endpoint() -> str:
+    return load_state().get("hf_endpoint", "")
+
+
+def apply_saved_endpoint() -> None:
+    set_hf_endpoint(get_hf_endpoint())
 
 
 def models_dir() -> str:
@@ -215,42 +251,84 @@ def ensure_deps(log: Optional[Callable[[str], None]] = None) -> bool:
 
 # ---------------------------------------------------------------- 模型下载
 
+# 全局下载状态（主窗口「下载/设置」页展示）
+_dl_state: dict = {
+    "repo": None,
+    "running": False,
+    "pct": 0.0,
+    "speed": 0,  # 字节/秒
+    "msg": "",
+    "ok": None,
+}
 
-class HFDownloader:
-    """带进度回调的 HF 下载器（用于 UI 显示进度条）."""
 
-    def __init__(self) -> None:
-        self._cancel = False
-        self._p = 0.0
+def download_state() -> dict:
+    return dict(_dl_state)
 
-    def cancel(self) -> None:
-        self._cancel = True
 
-    def download(self, repo_id: str, log: Callable[[str], None], progress: Callable[[float], None]) -> bool:
+def _fmt_bytes(n: float) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024 or unit == "TB":
+            return f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}TB"
+
+
+def start_download(repo_id: str, log: Callable[[str], None], on_update: Callable[[dict], None]) -> None:
+    """启动后台下载（非阻塞）。进度通过 on_update({repo,pct,speed,msg,running,ok}) 推送."""
+
+    if _dl_state["running"]:
+        log(f"已有下载任务进行中: {_dl_state['repo']}，请等待完成")
+        on_update(dict(_dl_state))
+        return
+
+    def push(**kw: object) -> None:
+        _dl_state.update(kw)
+        on_update(dict(_dl_state))
+
+    local = os.path.join(models_dir(), repo_id.replace("/", "__"))
+    os.makedirs(local, exist_ok=True)
+    stop = {"flag": False}
+
+    def watcher(total: int) -> None:
+        prev = 0
+        while not stop["flag"] and _dl_state["running"]:
+            cur = 0
+            for root, _, fs in os.walk(local):
+                for fn in fs:
+                    try:
+                        cur += os.path.getsize(os.path.join(root, fn))
+                    except OSError:
+                        pass
+            pct = min(0.99, cur / total) if total > 0 else 0.0
+            push(pct=pct, speed=cur - prev, msg=f"{_fmt_bytes(cur)} / {_fmt_bytes(total)}")
+            prev = cur
+            time.sleep(1)
+
+    def run() -> None:
+        push(repo=repo_id, running=True, ok=None, pct=0.0, speed=0, msg="准备下载…")
+        log(f"开始下载: {repo_id}（支持断点续传）")
         try:
-            from huggingface_hub import snapshot_download
-        except Exception:
-            log("huggingface_hub 未就绪，请先完成依赖自检")
-            return False
-        self._cancel = False
-        self._p = 0.0
+            from huggingface_hub import HfApi, snapshot_download
 
-        try:
-            from huggingface_hub import snapshot_download
-
-            snapshot_download(
-                repo_id=repo_id,
-                local_dir=os.path.join(models_dir(), repo_id.replace("/", "__")),
-                max_workers=4,
-            )
-            progress(1.0)
+            total = 0
+            try:
+                info = HfApi().model_info(repo_id, files_metadata=True)
+                total = sum((f.size or 0) for f in (info.siblings or []))
+            except Exception:
+                pass
+            t = threading.Thread(target=watcher, args=(total,), daemon=True)
+            t.start()
+            snapshot_download(repo_id=repo_id, local_dir=local, max_workers=4)
+            push(running=False, ok=True, pct=1.0, speed=0, msg="下载完成")
             log(f"模型下载完成: {repo_id}")
-            return True
-        except KeyboardInterrupt:
-            return False
         except Exception as e:
+            push(running=False, ok=False, speed=0, msg=f"下载失败: {e}")
             log(f"下载失败: {e}")
-            return False
+        finally:
+            stop["flag"] = True
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def list_local_models() -> List[str]:
@@ -312,7 +390,7 @@ class Generator:
                 log(f"加载模型: {path} (设备: {dev})")
                 dtype = torch.float16 if dev == "cuda" else torch.float32
 
-                # GGUF 权重：单独加载 transformer，再挂到官方基础管线
+                # GGUF 权重：单独加载 transformer，再挂到对应版本的基础管线
                 if weight and weight.endswith(".gguf"):
                     from diffusers import (  # type: ignore
                         GGUFQuantizationConfig,
@@ -320,18 +398,27 @@ class Generator:
                         QwenImageTransformer2DModel,
                     )
 
+                    # 按模型版本自动匹配基础组件仓库（文本编码器 / VAE）
+                    tag = f"{repo_id} {weight}".lower()
+                    if "2.1" in tag:
+                        base = "Qwen/Qwen-Image-2.1"
+                    elif "lightning" in tag and "gguf" not in repo_id.lower():
+                        base = "Qwen/Qwen-Image"
+                    else:
+                        base = "Qwen/Qwen-Image"
                     gguf_path = os.path.join(local, weight)
                     if not os.path.isfile(gguf_path):
                         log(f"GGUF 权重不存在: {gguf_path}")
                         return False
-                    log(f"加载 GGUF transformer: {weight}（首次会自动补齐官方基础组件）")
+                    log(f"加载 GGUF transformer: {weight}")
+                    log(f"基础组件仓库: {base}（文本编码器 / VAE，首次加载自动补齐）")
                     transformer = QwenImageTransformer2DModel.from_single_file(
                         gguf_path,
                         quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
                         torch_dtype=torch.bfloat16 if dev == "cuda" else torch.float32,
                     )
                     pipe = QwenImagePipeline.from_pretrained(
-                        "Qwen/Qwen-Image",
+                        base,
                         transformer=transformer,
                         torch_dtype=torch.bfloat16 if dev == "cuda" else torch.float32,
                     )
@@ -349,6 +436,8 @@ class Generator:
                 log("模型加载完成")
                 if "lightning" in repo_id.lower():
                     log("提示: Lightning 加速模型建议使用 步数=4、CFG=1.0")
+                if "turbo" in repo_id.lower():
+                    log("提示: Turbo 蒸馏模型建议使用 步数=8、CFG=1.0")
                 return True
             except Exception as e:
                 log(f"模型加载失败: {e}")
