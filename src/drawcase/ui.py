@@ -15,6 +15,7 @@ import queue
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter.constants import BOTH, LEFT, RIGHT, X, Y
 from typing import Callable, List, Optional
 
 from . import engine, taglib

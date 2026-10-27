@@ -53,7 +53,5 @@ installer/         # Inno Setup 脚本（升级覆盖安装，内置 models 模�
 .github/workflows/ # 手动触发打包 + 可选发布
 ```
 
-## License
-
-见 [LICENSE](LICENSE)。
+DRAWCASE_RUN
 
