@@ -1,0 +1,5 @@
+# 运行时最小依赖（打包进 exe 的 GUI 基础）
+# AI 依赖（torch/diffusers/transformers 等）由应用内置「依赖自检」按需安装，保持安装包轻量
+ttkbootstrap>=1.10.1
+pillow>=10.0.0
+pyinstaller>=6.0.0; sys_platform == 'win32'

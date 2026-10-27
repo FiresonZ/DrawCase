@@ -1,0 +1,28 @@
+// QwenImageStudio 版本资源（Windows exe 属性面板显示）
+// 由 CI 预处理 VERSION 占位符
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+FILEOS 0x40004L
+FILETYPE 0x1L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404b0"
+    BEGIN
+      VALUE "CompanyName", "FiresonZ"
+      VALUE "FileDescription", "QwenImageStudio - 本地 Qwen-Image 生图工作台"
+      VALUE "FileVersion", "0.1.0"
+      VALUE "InternalName", "QwenImageStudio"
+      VALUE "LegalCopyright", "Copyright (C) 2026 FiresonZ <dev@gith.uk>"
+      VALUE "OriginalFilename", "QwenImageStudio.exe"
+      VALUE "ProductName", "QwenImageStudio"
+      VALUE "ProductVersion", "0.1.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0804, 1200
+  END
+END
