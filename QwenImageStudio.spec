@@ -7,12 +7,16 @@ from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
-hidden = collect_submodules("ttkbootstrap") + [
-    "qwen_image_studio.taglib",
-    "qwen_image_studio.engine",
-    "qwen_image_studio.ui",
-    "qwen_image_studio.version_info",
-]
+hidden = (
+    collect_submodules("ttkbootstrap")
+    + collect_submodules("pip")  # 打包 exe 内置 pip，供依赖自检 --target 安装
+    + [
+        "qwen_image_studio.taglib",
+        "qwen_image_studio.engine",
+        "qwen_image_studio.ui",
+        "qwen_image_studio.version_info",
+    ]
+)
 
 a = Analysis(
     ["main.py"],

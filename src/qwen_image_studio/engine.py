@@ -57,6 +57,20 @@ def appdata() -> str:
     return d
 
 
+def runtime_dir() -> str:
+    """AI 依赖安装目录（pip --target），打包 exe 内也可用."""
+    d = os.path.join(appdata(), "runtime")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def ensure_runtime_path() -> None:
+    """把依赖目录注入 sys.path（须在 import torch 等之前调用）."""
+    rd = runtime_dir()
+    if rd not in sys.path:
+        sys.path.insert(0, rd)
+
+
 def models_dir() -> str:
     d = os.path.join(appdata(), "models")
     os.makedirs(d, exist_ok=True)
@@ -92,22 +106,43 @@ def save_state(st: dict) -> None:
 # ---------------------------------------------------------------- 依赖自检
 
 REQUIRED_PKGS = [
-    "diffusers>=0.31.0",
+    "diffusers>=0.34.0",
     "transformers>=4.51.0",
     "accelerate>=1.0.0",
     "safetensors>=0.4.0",
     "sentencepiece",
     "protobuf",
+    "gguf",
     "huggingface_hub>=0.26.0",
 ]
 
 
 def _pip(args: List[str]) -> int:
-    return subprocess.call(
-        [sys.executable, "-m", "pip", *args],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    """在打包 exe 与开发模式下都可用的 pip 安装.
+
+    - 开发模式: 直接用解释器自带 pip
+    - 打包模式: 使用 PyInstaller 打入的 pip 模块, --target 装到用户数据目录
+    """
+    target = runtime_dir()
+    full = ["install", "--quiet", "--target", target, "--upgrade", *args]
+    try:
+        from pip._internal.cli.main import main as pip_main  # type: ignore
+
+        return pip_main(full)
+    except Exception:
+        return subprocess.call(
+            [sys.executable, "-m", "pip", *full],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def _has_nvidia_gpu() -> bool:
+    try:
+        out = subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL, timeout=10)
+        return b"NVIDIA" in out or b"nvidia" in out.lower()
+    except Exception:
+        return False
 
 
 def is_python_available() -> bool:
@@ -138,12 +173,13 @@ def torch_device() -> str:
 
 
 def ensure_deps(log: Optional[Callable[[str], None]] = None) -> bool:
-    """自动补齐 AI 运行依赖。返回是否成功."""
+    """自动补齐 AI 运行依赖（装到用户数据目录，升级重装不重装）。返回是否成功."""
 
     def say(m: str) -> None:
         if log:
             log(m)
 
+    ensure_runtime_path()
     missing = []
     for pkg in REQUIRED_PKGS:
         name = pkg.split(">=")[0].split("<")[0]
@@ -155,21 +191,23 @@ def ensure_deps(log: Optional[Callable[[str], None]] = None) -> bool:
         say(f"正在安装依赖: {', '.join(missing)} ...")
         # 使用清华镜像加速国内下载
         idx = os.environ.get("PIP_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
-        rc = _pip(["install", "--quiet", "--upgrade", "-i", idx, *missing])
+        rc = _pip(["-i", idx, *missing])
         if rc != 0:
             say("镜像源安装失败，尝试官方源...")
-            rc = _pip(["install", "--quiet", "--upgrade", *missing])
+            rc = _pip(missing)
         if rc != 0:
             say("依赖安装失败，请检查网络或手动安装。")
             return False
     if not has_torch():
-        say("正在安装 PyTorch（可能较大，请耐心等待）...")
-        idx = os.environ.get("PIP_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
-        rc = _pip(["install", "--quiet", "-i", idx, "torch", "torchvision"])
+        gpu = _has_nvidia_gpu()
+        if gpu:
+            say("检测到 NVIDIA 显卡，正在安装 CUDA 版 PyTorch（约 2.5GB，请耐心等待）...")
+            rc = _pip(["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124"])
+        else:
+            say("未检测到 NVIDIA 显卡，安装 CPU 版 PyTorch（约 200MB）...")
+            rc = _pip(["torch", "torchvision"])
         if rc != 0:
-            rc = _pip(["install", "--quiet", "torch", "torchvision"])
-        if rc != 0:
-            say("PyTorch 安装失败。若需 GPU 版请手动安装对应 CUDA 版本。")
+            say("PyTorch 安装失败，请检查网络后重试。")
             return False
     say("依赖自检完成。")
     return True
@@ -270,26 +308,38 @@ class Generator:
 
                 local = os.path.join(models_dir(), repo_id.replace("/", "__"))
                 path = local if os.path.isdir(local) else repo_id
-                log(f"加载模型: {path} (设备: {torch_device()})")
-                dtype = torch.float16 if torch_device() == "cuda" else torch.float32
-                pipe = DiffusionPipeline.from_pretrained(
-                    path,
-                    torch_dtype=dtype,
-                )
-                # 尝试加载 gguf 权重（diffusion-pipe 扩展）
-                if weight and weight.endswith(".gguf"):
-                    try:
-                        from diffusers import GGUFQuantizationConfig  # type: ignore
-
-                        pipe = DiffusionPipeline.from_pretrained(
-                            path,
-                            transformer=weight,
-                            quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
-                            torch_dtype=dtype,
-                        )
-                    except Exception as e:
-                        log(f"GGUF 加载回退为默认管线: {e}")
                 dev = torch_device()
+                log(f"加载模型: {path} (设备: {dev})")
+                dtype = torch.float16 if dev == "cuda" else torch.float32
+
+                # GGUF 权重：单独加载 transformer，再挂到官方基础管线
+                if weight and weight.endswith(".gguf"):
+                    from diffusers import (  # type: ignore
+                        GGUFQuantizationConfig,
+                        QwenImagePipeline,
+                        QwenImageTransformer2DModel,
+                    )
+
+                    gguf_path = os.path.join(local, weight)
+                    if not os.path.isfile(gguf_path):
+                        log(f"GGUF 权重不存在: {gguf_path}")
+                        return False
+                    log(f"加载 GGUF transformer: {weight}（首次会自动补齐官方基础组件）")
+                    transformer = QwenImageTransformer2DModel.from_single_file(
+                        gguf_path,
+                        quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+                        torch_dtype=torch.bfloat16 if dev == "cuda" else torch.float32,
+                    )
+                    pipe = QwenImagePipeline.from_pretrained(
+                        "Qwen/Qwen-Image",
+                        transformer=transformer,
+                        torch_dtype=torch.bfloat16 if dev == "cuda" else torch.float32,
+                    )
+                else:
+                    pipe = DiffusionPipeline.from_pretrained(
+                        path,
+                        torch_dtype=dtype,
+                    )
                 pipe.to(dev)
                 if dev == "cuda":
                     pipe.enable_attention_slicing()
@@ -297,6 +347,8 @@ class Generator:
                 self._repo = repo_id
                 self._weight = weight or ""
                 log("模型加载完成")
+                if "lightning" in repo_id.lower():
+                    log("提示: Lightning 加速模型建议使用 步数=4、CFG=1.0")
                 return True
             except Exception as e:
                 log(f"模型加载失败: {e}")
