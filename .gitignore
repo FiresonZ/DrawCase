@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 installer/dist/
+installer/ChineseSimplified.isl
 
 # 运行产物
 *.log

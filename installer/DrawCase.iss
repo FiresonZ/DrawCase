@@ -43,7 +43,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 UninstallFilesDir={app}\uninst
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; ChineseSimplified.isl 由 CI 下载到本目录（见 workflow），本地构建请手动放置
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Files]
 Source: "..\dist\DrawCase\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs replacesameversion

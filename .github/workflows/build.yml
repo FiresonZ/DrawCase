@@ -97,14 +97,6 @@ jobs:
           if (-not (Test-Path $dest)) { throw "ChineseSimplified.isl 下载失败（所有源均 404）" }
           Get-Item $dest | Select-Object Length
 
-      - name: Patch iss to use bundled language file
-        shell: pwsh
-        run: |
-          $p = "installer/DrawCase.iss"
-          (Get-Content $p -Raw) `
-            -replace 'compiler:\\Languages\\ChineseSimplified\.isl', 'ChineseSimplified.isl' |
-            Set-Content $p
-
       - name: Build installer (Inno Setup)
         shell: pwsh
         run: |
