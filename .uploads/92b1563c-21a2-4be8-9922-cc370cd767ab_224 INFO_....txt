@@ -1,0 +1,174 @@
+224 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.9
+224 INFO: Python: 3.11.9
+233 INFO: Platform: Windows-10-10.0.26100-SP0
+233 INFO: Python environment: C:\hostedtoolcache\windows\Python\3.11.9\x64
+134 WARNING: Failed to collect submodules for 'pip._vendor.urllib3.contrib.emscripten' because importing 'pip._vendor.urllib3.contrib.emscripten' raised: ModuleNotFoundError: No module named 'js'
+1402 INFO: Module search paths (PYTHONPATH):
+['C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Scripts\\pyinstaller.exe',
+ 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\python311.zip',
+ 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\DLLs',
+ 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib',
+ 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64',
+ 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages',
+ 'D:\\a\\DrawCase\\DrawCase',
+ 'D:\\a\\DrawCase\\DrawCase\\src']
+1703 INFO: Appending 'datas' from .spec
+1704 INFO: checking Analysis
+1705 INFO: Building Analysis because Analysis-00.toc is non existent
+1705 INFO: Looking for Python shared library...
+1705 INFO: Using Python shared library: C:\hostedtoolcache\windows\Python\3.11.9\x64\python311.dll
+1705 INFO: Running Analysis Analysis-00.toc
+1705 INFO: Target bytecode optimization level: 0
+1705 INFO: Initializing module dependency graph...
+1708 INFO: Initializing module graph hook caches...
+1726 INFO: Analyzing modules for base_library.zip ...
+2588 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+2705 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+4445 INFO: Processing standard module hook 'hook-math.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+4555 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+6292 INFO: Caching module dependency graph...
+6330 INFO: Analyzing D:\a\DrawCase\DrawCase\main.py
+6386 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+6568 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+6838 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+8105 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+8125 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+8125 INFO: SetuptoolsInfo: initializing cached setuptools info...
+9443 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+9761 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11173 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+11261 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11261 INFO: Processing pre-find-module-path hook 'hook-distutils.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+11267 INFO: Processing standard module hook 'hook-distutils.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+11304 INFO: Processing standard module hook 'hook-distutils.util.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+11358 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+12570 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+13321 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+13321 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+14119 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+14190 INFO: Processing standard module hook 'hook-ttkbootstrap.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\ttkbootstrap\\_pyinstaller'
+14630 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+14759 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+15097 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+15253 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+16166 INFO: Analyzing hidden import 'ttkbootstrap.__main__'
+16174 INFO: Analyzing hidden import 'ttkbootstrap._pyinstaller'
+16174 INFO: Analyzing hidden import 'ttkbootstrap._pyinstaller.hook-ttkbootstrap'
+16192 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16192 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+16226 INFO: Processing standard module hook 'hook-win32ctypes.core.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+17137 INFO: Analyzing hidden import 'ttkbootstrap.assets'
+17139 INFO: Analyzing hidden import 'ttkbootstrap.assets.elements'
+17139 INFO: Analyzing hidden import 'ttkbootstrap.cli'
+17171 INFO: Analyzing hidden import 'ttkbootstrap.colorutils'
+17171 INFO: Analyzing hidden import 'ttkbootstrap.internal.publisher'
+17173 INFO: Analyzing hidden import 'ttkbootstrap.publisher'
+17175 INFO: Analyzing hidden import 'ttkbootstrap.utility'
+17175 INFO: Analyzing hidden import 'pip.__main__'
+17181 INFO: Analyzing hidden import 'pip.__pip-runner__'
+17183 INFO: Analyzing hidden import 'pip._internal.commands.cache'
+17191 INFO: Analyzing hidden import 'pip._internal.commands.check'
+17197 INFO: Analyzing hidden import 'pip._internal.commands.completion'
+17199 INFO: Analyzing hidden import 'pip._internal.commands.configuration'
+17207 INFO: Analyzing hidden import 'pip._internal.commands.debug'
+17215 INFO: Analyzing hidden import 'pip._internal.commands.download'
+17219 INFO: Analyzing hidden import 'pip._internal.commands.freeze'
+17230 INFO: Analyzing hidden import 'pip._internal.commands.hash'
+17232 INFO: Analyzing hidden import 'pip._internal.commands.help'
+17234 INFO: Analyzing hidden import 'pip._internal.commands.index'
+17248 INFO: Analyzing hidden import 'pip._internal.commands.inspect'
+17256 INFO: Analyzing hidden import 'pip._internal.commands.list'
+17268 INFO: Analyzing hidden import 'pip._internal.commands.lock'
+17280 INFO: Analyzing hidden import 'pip._internal.commands.show'
+17288 INFO: Analyzing hidden import 'pip._internal.commands.uninstall'
+17292 INFO: Analyzing hidden import 'pip._internal.commands.wheel'
+17298 INFO: Analyzing hidden import 'pip._internal.main'
+17298 INFO: Analyzing hidden import 'pip._vendor.cachecontrol._cmd'
+17300 INFO: Analyzing hidden import 'pip._vendor.certifi.__main__'
+17302 INFO: Analyzing hidden import 'pip._vendor.certifi.tests'
+17302 INFO: Analyzing hidden import 'pip._vendor.certifi.tests.test_certify'
+17829 INFO: Analyzing hidden import 'pip._vendor.distro.__main__'
+17830 INFO: Analyzing hidden import 'pip._vendor.idna.__main__'
+17838 INFO: Analyzing hidden import 'pip._vendor.idna.codec'
+17846 INFO: Analyzing hidden import 'pip._vendor.idna.compat'
+17848 INFO: Analyzing hidden import 'pip._vendor.packaging._structures'
+17852 INFO: Analyzing hidden import 'pip._vendor.packaging.licenses'
+17894 INFO: Analyzing hidden import 'pip._vendor.packaging.metadata'
+17940 INFO: Analyzing hidden import 'pip._vendor.platformdirs.__main__'
+17964 INFO: Analyzing hidden import 'pip._vendor.pygments.__main__'
+17966 INFO: Analyzing hidden import 'pip._vendor.pygments.console'
+17968 INFO: Analyzing hidden import 'pip._vendor.pygments.formatters'
+17979 INFO: Analyzing hidden import 'pip._vendor.pygments.lexers.python'
+18010 INFO: Analyzing hidden import 'pip._vendor.pygments.scanner'
+18014 INFO: Analyzing hidden import 'pip._vendor.pygments.sphinxext'
+18026 INFO: Analyzing hidden import 'pip._vendor.pyproject_hooks._in_process._in_process'
+18036 INFO: Analyzing hidden import 'pip._vendor.requests.help'
+18040 INFO: Analyzing hidden import 'pip._vendor.rich._stack'
+18042 INFO: Analyzing hidden import 'pip._vendor.rich.bar'
+18044 INFO: Analyzing hidden import 'pip._vendor.rich.diagnose'
+18046 INFO: Analyzing hidden import 'pip._vendor.rich.layout'
+18070 INFO: Analyzing hidden import 'pip._vendor.rich.prompt'
+18088 INFO: Processing module hooks (post-graph stage)...
+18103 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+18215 INFO: Processing standard module hook 'hook-pkg_resources.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+20371 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+20427 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+21710 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+21858 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+22887 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks'
+22907 INFO: Performing binary vs. data reclassification (962 entries)
+23602 INFO: Looking for ctypes DLLs
+23780 INFO: Analyzing run-time hooks ...
+23786 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23789 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23791 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23792 INFO: Including run-time hook 'pyi_rth_pkgres.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23796 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23796 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\hostedtoolcache\\windows\\Python\\3.11.9\\x64\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+23838 INFO: Creating base_library.zip...
+23860 INFO: Looking for dynamic libraries
+C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\_distutils_hack\__init__.py:33: UserWarning: Setuptools is replacing distutils.
+  warnings.warn("Setuptools is replacing distutils.")
+24683 INFO: Extra DLL search directories (AddDllDirectory): []
+24683 INFO: Extra DLL search directories (PATH): []
+25564 INFO: Warnings written to D:\a\DrawCase\DrawCase\build\QwenImageStudio\warn-QwenImageStudio.txt
+25694 INFO: Graph cross-reference written to D:\a\DrawCase\DrawCase\build\QwenImageStudio\xref-QwenImageStudio.html
+25748 INFO: checking PYZ
+25748 INFO: Building PYZ because PYZ-00.toc is non existent
+25748 INFO: Building PYZ (ZlibArchive) D:\a\DrawCase\DrawCase\build\QwenImageStudio\PYZ-00.pyz
+26727 INFO: Building PYZ (ZlibArchive) D:\a\DrawCase\DrawCase\build\QwenImageStudio\PYZ-00.pyz completed successfully.
+Traceback (most recent call last):
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\utils\win32\versioninfo.py", line 572, in load_version_info_from_text_file
+    info = eval(text)
+           ^^^^^^^^^^
+  File "<string>", line 1
+    // QwenImageStudio \u7248\u672c\u8d44\u6e90\uff08Windows exe \u5c5e\u6027\u9762\u677f\u663e\u793a\uff09
+                           ^
+SyntaxError: invalid character '\uff08' (U+FF08)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Scripts\pyinstaller.exe\__main__.py", line 5, in <module>
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\__main__.py", line 231, in _console_script_run
+    run()
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\__main__.py", line 215, in run
+    run_build(pyi_config, spec_file, **vars(args))
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\__main__.py", line 70, in run_build
+    PyInstaller.building.build_main.main(pyi_config, spec_file, **kwargs)
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\building\build_main.py", line 1275, in main
+    build(specfile, distpath, workpath, clean_build)
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\building\build_main.py", line 1213, in build
+    exec(code, spec_namespace)
+  File "QwenImageStudio.spec", line 38, in <module>
+    exe = EXE(
+          ^^^^
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\building\api.py", line 625, in __init__
+    self.versrsrc = versioninfo.load_version_info_from_text_file(self.versrsrc)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\hostedtoolcache\windows\Python\3.11.9\x64\Lib\site-packages\PyInstaller\utils\win32\versioninfo.py", line 574, in load_version_info_from_text_file
+    raise ValueError("Failed to deserialize VSVersionInfo from text-based representation!") from e
+ValueError: Failed to deserialize VSVersionInfo from text-based representation!
+Error: Process completed with exit code 1.
