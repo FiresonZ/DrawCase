@@ -299,14 +299,45 @@ _RAW: List[Tuple[str, str, str]] = [
     ("恐怖", "grotesque", "负面"),
 ]
 
-CATEGORY_ORDER = ["画质", "人物", "服装", "动作", "构图", "风格", "场景", "氛围", "负面"]
+CATEGORY_ORDER = ["画质", "人物", "服装", "动作", "构图", "风格", "场景", "氛围", "负面",
+                  "通用", "角色", "作品", "画师", "元数据"]
 
-BUILTIN_VERSION = 1  # 内置 Tag 库版本（data/tags.json 远程更新时递增）
+BUILTIN_VERSION = 2  # 内置 Tag 库版本（data/tags.json 远程更新时递增）
 
 _CACHE: List[Tuple[str, str, str]] = []
+_LOADED_VER = BUILTIN_VERSION
 
 
-def _remote_tags() -> Optional[List[Tuple[str, str, str]]]:
+def current_version() -> int:
+    """当前生效的 Tag 库版本."""
+    return max(BUILTIN_VERSION, _LOADED_VER)
+
+
+def _packaged_tags() -> Optional[Tuple[int, List[Tuple[str, str, str]]]]:
+    """加载随软件打包的全量 Tag 库（data/tags.json，约 10 万条）."""
+    import sys
+
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(os.path.join(getattr(sys, "_MEIPASS", ""), "data", "tags.json"))
+    # 开发模式：taglib.py 位于 src/qwen_image_studio/，仓库根在三级上层
+    candidates.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "data", "tags.json"))
+    for p in candidates:
+        try:
+            if p and os.path.isfile(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                ver = int(data.get("version", 0))
+                tags = [(str(z), str(e), str(c)) for z, e, c in data.get("tags", [])]
+                if tags:
+                    return ver, tags
+        except Exception:
+            continue
+    return None
+
+
+def _remote_tags() -> Optional[Tuple[int, List[Tuple[str, str, str]]]]:
     """加载远程更新的 Tag 库（appdata/tags_remote.json，由引擎经 GitHub 代理下载）."""
     try:
         from .version_info import appdata_dir
@@ -316,8 +347,10 @@ def _remote_tags() -> Optional[List[Tuple[str, str, str]]]:
             return None
         with open(p, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if int(data.get("version", 0)) >= BUILTIN_VERSION and data.get("tags"):
-            return [(str(z), str(e), str(c)) for z, e, c in data["tags"]]
+        ver = int(data.get("version", 0))
+        tags = [(str(z), str(e), str(c)) for z, e, c in data.get("tags", [])]
+        if tags:
+            return ver, tags
     except Exception:
         pass
     return None
@@ -332,13 +365,16 @@ def _appdata() -> str:
 
 
 def load_tags() -> List[Tuple[str, str, str]]:
-    """内置库（或远程更新版）+ 用户 tags_extra.csv 追加，带缓存."""
-    global _CACHE
+    """加载 Tag 库（版本最高者优先：远程更新 > 打包全量 > 内置精选），叠加用户 csv."""
+    global _CACHE, _LOADED_VER
     if _CACHE:
         return _CACHE
-    base = _remote_tags()
-    if base is None:
-        base = [(z, e, c) for z, e, c in _RAW]
+    base = [(z, e, c) for z, e, c in _RAW]
+    ver = BUILTIN_VERSION
+    for src in (_packaged_tags(), _remote_tags()):
+        if src and src[0] >= ver:
+            ver, base = src
+    _LOADED_VER = ver
     extra = os.path.join(_appdata(), "tags_extra.csv")
     try:
         if os.path.isfile(extra):

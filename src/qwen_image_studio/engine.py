@@ -487,8 +487,8 @@ def update_tags_from_github(log: Callable[[str], None]) -> bool:
                 data = _json.loads(resp.read().decode("utf-8"))
             version = int(data.get("version", 0))
             tags = data.get("tags", [])
-            if version < taglib.BUILTIN_VERSION or not tags:
-                log("远端 Tag 库不比内置新，已是最新。")
+            if version <= taglib.current_version() or not tags:
+                log(f"远端 Tag 库（v{version}）不比当前（v{taglib.current_version()}）新，已是最新。")
                 return True
             with open(tags_remote_path(), "w", encoding="utf-8") as f:
                 _json.dump(data, f, ensure_ascii=False)

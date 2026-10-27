@@ -10,7 +10,7 @@
 - **模型自管，不被升级覆盖**：从 HuggingFace 自行下载模型，放入安装目录 `models\QwenImage` 或 `models\SDXL`（也可在设置里添加任意自定义模型文件夹），软件自动扫描
 - **双系列支持**：Qwen-Image 全量 / GGUF（自动补齐 2.1 或 1.0 基础组件）+ SDXL 系单文件整合包（含 V-Prediction 自动调度）
 - **设置页手动切换模型系列**，下拉选择模型点「使用」
-- **中文 Tag 库**：中英对照、分类浏览、搜索，双击插入提示词
+- **中文 Tag 库（10 万+ 条）**：内置 [danbooru-tags-data-zh](https://github.com/amenorira/danbooru-tags-data-zh)（MIT）全量中文翻译库（通用/角色/作品/画师/元数据，含 NSFW），中英对照、分类浏览、搜索，双击插入提示词；支持经 GitHub 代理在线更新
 - **升级覆盖安装**：依赖装在 `%LOCALAPPDATA%\QwenImageStudio\runtime`、模型在安装目录 `models\`（卸载标志 neveruninstall）、配置在 `%LOCALAPPDATA%`，升级重装全部保留
 - **轻量现代化 UI**：暗色扁平界面，安装包小、启动快
 

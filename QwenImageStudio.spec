@@ -24,6 +24,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ("src/qwen_image_studio", "qwen_image_studio"),
+        ("data/tags.json", "data"),
     ],
     hiddenimports=hidden,
     hookspath=[],
