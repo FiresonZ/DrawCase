@@ -1,0 +1,111 @@
+name: Build Windows Setup (QwenImageStudio)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（例如 1.0.0）"
+        required: true
+        default: "1.0.0"
+      publish:
+        description: "是否发布 Release"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & (optional) Publish
+    runs-on: windows-latest
+    env:
+      APP_VERSION: ${{ github.event.inputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Sync version into source
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.inputs.version }}"
+          (Get-Content src/qwen_image_studio/version_info.py) `
+            -replace 'VERSION = ".*"', "VERSION = `"$v`"" |
+            Set-Content src/qwen_image_studio/version_info.py
+          (Get-Content src/qwen_image_studio/__init__.py) `
+            -replace '__version__ = ".*"', "__version__ = `"$v`"" |
+            Set-Content src/qwen_image_studio/__init__.py
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check
+        run: |
+          python -m compileall -q src main.py
+
+      - name: Smoke test (headless import check)
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          python -c "import qwen_image_studio, qwen_image_studio.taglib, qwen_image_studio.engine; print('ok', qwen_image_studio.__version__)"
+
+      - name: Build with PyInstaller
+        run: pyinstaller QwenImageStudio.spec --noconfirm
+
+      - name: Download Inno Setup Chinese language file
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+          $dest = "$env:RUNNER_TEMP\ChineseSimplified.isl"
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          Copy-Item $dest "installer\ChineseSimplified.isl"
+
+      - name: Patch iss to use bundled language file
+        shell: pwsh
+        run: |
+          $p = "installer/QwenImageStudio.iss"
+          (Get-Content $p -Raw) `
+            -replace 'compiler:\\Languages\\ChineseSimplified\.isl', 'ChineseSimplified.isl' |
+            Set-Content $p
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
+          & $iscc "installer\QwenImageStudio.iss"
+          Get-ChildItem dist\installer
+
+      - name: Upload artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: QwenImageStudio-Setup-${{ github.event.inputs.version }}
+          path: dist/installer/*.exe
+          if-no-files-found: error
+
+      - name: Create Release & upload setup exe
+        if: ${{ github.event.inputs.publish == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: QwenImageStudio v${{ github.event.inputs.version }}
+          body: |
+            ## QwenImageStudio v${{ github.event.inputs.version }}
+
+            - 本地 Qwen-Image 生图工作台
+            - 内置中文 Tag 库，双击插入提示词
+            - 支持升级覆盖安装，已下载模型与作品保留
+
+            作者: FiresonZ <dev@gith.uk>
+          files: dist/installer/*.exe
+          draft: false
+          prerelease: false
